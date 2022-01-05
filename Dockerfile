@@ -54,7 +54,8 @@ RUN mkdir -p /var/www/html \
     mkdir /var/localcache
 
 RUN chown -R nobody.nobody /var/localcache && \ 
-    chown -R nobody.nobody /var/moodledata
+    chown -R nobody.nobody /var/moodledata && \
+    chmod -R 777 /var/moodledata
 
 # Switch to use a non-root user from here on
 USER nobody
