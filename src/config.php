@@ -8,8 +8,8 @@ $CFG->dbtype    = 'mysqli';
 $CFG->dblibrary = 'native';
 $CFG->dbhost    = strval(getenv("MYSQL_ADDRESS"));
 $CFG->dbname    = getenv("MYSQL_DATABASE");
-$CFG->dbuser    = getenv("MYSQL_PASSWORD");
-$CFG->dbpass    = getenv("MYSQL_USERNAME");
+$CFG->dbuser    = getenv("MYSQL_USERNAME");
+$CFG->dbpass    = getenv("MYSQL_PASSWORD");
 $CFG->prefix    = 'mdl_';
 
 $CFG->wwwroot   = 'https://moodle.bitorical.com';
