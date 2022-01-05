@@ -6,10 +6,10 @@ $CFG = new stdClass();
 
 $CFG->dbtype    = 'mysqli';
 $CFG->dblibrary = 'native';
-$CFG->dbhost    = $_ENV["MYSQL_ADDRESS"];
-$CFG->dbname    = $_ENV["MYSQL_DATABASE"];
-$CFG->dbuser    = $_ENV["MYSQL_PASSWORD"];
-$CFG->dbpass    = $_ENV["MYSQL_USERNAME"];
+$CFG->dbhost    = strval(getenv("MYSQL_ADDRESS"));
+$CFG->dbname    = getenv("MYSQL_DATABASE");
+$CFG->dbuser    = getenv("MYSQL_PASSWORD");
+$CFG->dbpass    = getenv("MYSQL_USERNAME");
 $CFG->prefix    = 'mdl_';
 
 $CFG->wwwroot   = 'https://moodle.bitorical.com';
@@ -21,7 +21,7 @@ $CFG->sslproxy = true;
 $CFG->directorypermissions = 0777;
 
 $CFG->session_handler_class = '\core\session\redis';
-$CFG->session_redis_host = $_ENV["REDIS_ADDRESS"];
+$CFG->session_redis_host = getenv("REDIS_ADDRESS");
 $CFG->session_redis_port = 6379;  // Optional.
 $CFG->session_redis_database = 0;  // Optional, default is db 0.
 $CFG->session_redis_prefix = 'mod_us_'; // Optional, default is don't set one.
