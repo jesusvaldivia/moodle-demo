@@ -18,33 +18,36 @@ namespace tool_objectfs\tests;
 
 defined('MOODLE_INTERNAL') || die();
 
-use tool_objectfs\object_file_system;
-use tool_objectfs\object_manipulator\recoverer;
+use tool_objectfs\local\manager;
+use tool_objectfs\local\object_manipulator\candidates\candidates_finder;
+use tool_objectfs\local\object_manipulator\recoverer;
 
 require_once(__DIR__ . '/classes/test_client.php');
 require_once(__DIR__ . '/tool_objectfs_testcase.php');
 
 class recoverer_testcase extends tool_objectfs_testcase {
 
-    protected function setUp() {
+    protected function setUp(): void {
         parent::setUp();
-        $config = get_objectfs_config();
-        set_objectfs_config($config);
+        $config = manager::get_objectfs_config();
+        $this->candidatesfinder = new candidates_finder(recoverer::class, $config);
+        manager::set_objectfs_config($config);
         $this->logger = new \tool_objectfs\log\aggregate_logger();
         $this->recoverer = new recoverer($this->filesystem, $config, $this->logger);
         ob_start();
     }
 
-    protected function tearDown() {
+    protected function tearDown(): void {
         ob_end_clean();
     }
 
     public function test_recoverer_get_candidate_objects_will_get_error_objects() {
         $recovererobject = $this->create_error_object();
+        $candidateobjects = $this->candidatesfinder->get();
 
-        $candidateobjects = $this->recoverer->get_candidate_objects();
-
-        $this->assertArrayHasKey($recovererobject->contenthash, $candidateobjects);
+        foreach ($candidateobjects as $candidate) {
+            $this->assertEquals($recovererobject->contenthash, $candidate->contenthash);
+        }
     }
 
     public function test_recoverer_will_recover_local_objects() {

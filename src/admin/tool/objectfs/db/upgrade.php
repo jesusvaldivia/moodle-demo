@@ -14,6 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+/**
+ * Upgrade script for the Objectfs plugin.
+ *
+ * @package   tool_objectfs
+ * @author    Mikhail Golenkov <mikhailgolenkov@catalyst-au.net>
+ * @copyright Catalyst IT
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+defined('MOODLE_INTERNAL') || die();
+
 function xmldb_tool_objectfs_upgrade($oldversion) {
     global $DB;
     $dbman = $DB->get_manager();
@@ -75,9 +86,57 @@ function xmldb_tool_objectfs_upgrade($oldversion) {
         unset_config('secret', 'tool_objectfs');
         unset_config('bucket', 'tool_objectfs');
         unset_config('region', 'tool_objectfs');
+        unset_config('key_prefix', 'tool_objectfs');
 
         upgrade_plugin_savepoint(true, 2017111700, 'tool', 'objectfs');
     }
 
+    if ($oldversion < 2020030900) {
+        $table = new xmldb_table('tool_objectfs_objects');
+        $index = new xmldb_index('toolobjeobje_con_idu_ix', XMLDB_INDEX_UNIQUE, ['contenthash, location']);
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_plugin_savepoint(true, 2020030900, 'tool', 'objectfs');
+    }
+
+    if ($oldversion < 2020052600) {
+        $dbman->drop_table(new xmldb_table('tool_objectfs_reports'));
+
+        $table = new xmldb_table('tool_objectfs_reports');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE);
+        $table->add_field('reportdate', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('reportdate_idx', XMLDB_INDEX_NOTUNIQUE, ['reportdate']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        $table = new xmldb_table('tool_objectfs_report_data');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE);
+        $table->add_field('reportid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL);
+        $table->add_field('reporttype', XMLDB_TYPE_CHAR, 15, null, XMLDB_NOTNULL);
+        $table->add_field('datakey', XMLDB_TYPE_CHAR, 15, null, XMLDB_NOTNULL);
+        $table->add_field('objectcount', XMLDB_TYPE_INTEGER, 15, null, XMLDB_NOTNULL);
+        $table->add_field('objectsum', XMLDB_TYPE_INTEGER, 20, null, XMLDB_NOTNULL);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('reporttype_idx', XMLDB_INDEX_NOTUNIQUE, ['reporttype']);
+        $table->add_index('reportid_idx', XMLDB_INDEX_NOTUNIQUE, ['reportid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2020052600, 'tool', 'objectfs');
+    }
+
+    if ($oldversion < 2021090100) {
+        // If set already, make sure we use the same default value.
+        if (isset($CFG->tool_objectfs_delete_externally)) {
+            set_config('deleteexternal', $CFG->tool_objectfs_delete_externally, 'tool_objectfs');
+        }
+
+        upgrade_plugin_savepoint(true, 2021090100, 'tool', 'objectfs');
+    }
     return true;
 }

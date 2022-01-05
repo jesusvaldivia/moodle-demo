@@ -106,6 +106,8 @@ class aggregate_logger extends objectfs_logger {
                 return 'duplicated';
             case OBJECT_LOCATION_EXTERNAL:
                 return 'remote';
+            case OBJECT_LOCATION_ORPHANED:
+                return 'orphaned';
             default:
                 return $location;
         }
@@ -113,7 +115,7 @@ class aggregate_logger extends objectfs_logger {
 
     public function log_object_query($queryname, $objectcount, $objectsum = 0) {
         if (array_key_exists($queryname, $this->querystatistics)) {
-            $querystat = $this->readstatistics[$queryname];
+            $querystat = $this->querystatistics[$queryname];
         } else {
             $querystat = new objectfs_statistic($queryname);
         }
@@ -121,5 +123,4 @@ class aggregate_logger extends objectfs_logger {
         $querystat->add_object_data($objectcount, $objectsum);
         $this->querystatistics[$queryname] = $querystat;
     }
-
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="tool/sssfs/db" VERSION="20161207" COMMENT="XMLDB file for Moodle tool/objectfs plugin"
+<XMLDB PATH="admin/tool/objectfs/db" VERSION="20161207" COMMENT="XMLDB file for Moodle tool/objectfs plugin"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+    xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
 >
   <TABLES>
     <TABLE NAME="tool_objectfs_objects" COMMENT="Object data for objectfs">
@@ -15,10 +15,26 @@
         <KEY NAME="contenthash" TYPE="unique" FIELDS="contenthash"/>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
+      <INDEXES>
+        <INDEX NAME="toolobjeobje_con_idu_ix" UNIQUE="true" FIELDS="contenthash, location"/>
+      </INDEXES>
     </TABLE>
-    <TABLE NAME="tool_objectfs_reports" COMMENT="Object report data for objectfs">
+    <TABLE NAME="tool_objectfs_reports" COMMENT="List of Object reports for objectfs">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="reportdate" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="reportdate_idx" UNIQUE="false" FIELDS="reportdate"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="tool_objectfs_report_data" COMMENT="Object report data for objectfs">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="reportid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="reporttype" TYPE="char" LENGTH="15" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="datakey" TYPE="char" LENGTH="15" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="objectcount" TYPE="int" LENGTH="15" NOTNULL="true" SEQUENCE="false"/>
@@ -27,6 +43,10 @@
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
+      <INDEXES>
+        <INDEX NAME="reportid_idx" UNIQUE="false" FIELDS="reportid"/>
+        <INDEX NAME="reporttype_idx" UNIQUE="false" FIELDS="reporttype"/>
+      </INDEXES>
     </TABLE>
   </TABLES>
 </XMLDB>

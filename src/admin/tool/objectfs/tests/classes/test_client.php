@@ -18,18 +18,36 @@ namespace tool_objectfs\tests;
 
 defined('MOODLE_INTERNAL') || die();
 
-use tool_objectfs\object_file_system;
-use tool_objectfs\client\object_client;
+use tool_objectfs\local\store\object_client_base;
 
-class test_client implements object_client {
+class test_client extends object_client_base {
+
+    /** @var int $maxupload Maximum allowed file size that can be uploaded. */
+    protected $maxupload;
 
     private $bucketpath;
 
     public function __construct($config) {
         global $CFG;
-        $this->bucketpath = $CFG->phpunit_dataroot . '/mockbucket';
+        $this->maxupload = 5000000000;
+        $this->config = $config;
+        // Point autoloader to this file to make sure get_client_availability() returns true.
+        $this->autoloader = $CFG->dirroot . '/admin/tool/objectfs/tests/classes/test_client.php';
+        $dataroot = $CFG->phpunit_dataroot;
+        if (defined('PHPUNIT_INSTANCE') && PHPUNIT_INSTANCE !== null) {
+            $dataroot .= '/' . PHPUNIT_INSTANCE;
+        }
+        $this->bucketpath = $dataroot . '/mockbucket';
         if (!is_dir($this->bucketpath)) {
             mkdir($this->bucketpath);
+        }
+        // Trashdir for local storage.
+        if (!is_dir($this->bucketpath . '/trashdir')) {
+            mkdir($this->bucketpath . '/trashdir');
+        }
+        // Trashdir for external storage.
+        if (!is_dir($this->bucketpath . '/trash')) {
+            mkdir($this->bucketpath . '/trash');
         }
     }
 
@@ -42,6 +60,22 @@ class test_client implements object_client {
         return "$this->bucketpath/{$contenthash}";
     }
 
+    public function get_trash_fullpath_from_hash($contenthash) {
+        return "$this->bucketpath/trashdir/{$contenthash}";
+    }
+
+    public function delete_file($fullpath) {
+        return unlink($fullpath);
+    }
+
+    public function rename_file($currentpath, $destinationpath) {
+        return rename($currentpath, $destinationpath);
+    }
+
+    public function get_external_trash_path_from_hash($contenthash) {
+        return "$this->bucketpath/trash/{$contenthash}";
+    }
+
     public function register_stream_wrapper() {
         return true;
     }
@@ -52,28 +86,26 @@ class test_client implements object_client {
     }
 
     public function verify_object($contenthash, $localpath) {
-        $localmd5 = md5_file($localpath);
-        $externalmd5 = $this->get_md5_from_hash($contenthash);
-        if ($localmd5 === $externalmd5) {
+        // For objects uploaded to S3 storage using the multipart upload, the etag will not be the objects MD5.
+        // So we can't compare here to verify the object.
+        // For now we just check that we can retrieve any Etag to verify the object for all supported storages.
+        $retrievemd5 = $this->get_md5_from_hash($contenthash);
+        if ($retrievemd5) {
             return true;
         }
         return false;
     }
 
     public function test_connection() {
-        return true;
+        return (object)['success' => true, 'details' => ''];
     }
 
-    public function test_permissions() {
-        return true;
-    }
-
-    public function get_availability() {
-        return true;
+    public function test_permissions($testdelete) {
+        return (object)['success' => true, 'details' => ''];
     }
 
     public function get_maximum_upload_size() {
-        return 5000000000;
+        return $this->maxupload;
     }
 }
 

@@ -52,7 +52,17 @@ abstract class objectfs_logger {
         return $this->timeend - $this->timestart;
     }
 
-    public abstract function log_object_read($readname, $objectpath, $objectsize = 0);
-    public abstract function log_object_move($movename, $initallocation, $finallocation, $objecthash, $objectsize = 0);
-    public abstract function log_object_query($queryname, $objectcount, $objectsum = 0);
+    public function error_log($error) {
+        // @codingStandardsIgnoreStart
+        error_log($error);
+        // @codingStandardsIgnoreEnd
+    }
+
+    public function log_lock_timing($lock) {
+        return;
+    }
+
+    abstract public function log_object_read($readname, $objectpath, $objectsize = 0);
+    abstract public function log_object_move($movename, $initallocation, $finallocation, $objecthash, $objectsize = 0);
+    abstract public function log_object_query($queryname, $objectcount, $objectsum = 0);
 }

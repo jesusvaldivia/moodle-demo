@@ -29,8 +29,8 @@ $tasks = array(
     array(
         'classname' => 'tool_objectfs\task\push_objects_to_storage',
         'blocking'  => 0,
-        'minute'    => '*/5',
-        'hour '     => '*',
+        'minute'    => '*',
+        'hour'      => '*',
         'day'       => '*',
         'dayofweek' => '*',
         'month'     => '*'
@@ -39,7 +39,7 @@ $tasks = array(
         'classname' => 'tool_objectfs\task\generate_status_report',
         'blocking'  => 0,
         'minute'    => '17',
-        'hour '     => '*',
+        'hour'     => '*',
         'day'       => '*',
         'dayofweek' => '*',
         'month'     => '*'
@@ -47,8 +47,35 @@ $tasks = array(
     array(
         'classname' => 'tool_objectfs\task\delete_local_objects',
         'blocking'  => 0,
-        'minute'    => '*/5',
-        'hour '     => '*',
+        'minute'    => '*',
+        'hour'      => '*',
+        'day'       => '*',
+        'dayofweek' => '*',
+        'month'     => '*'
+    ),
+    array(
+        'classname' => 'tool_objectfs\task\orphan_objects',
+        'blocking'  => 0,
+        'minute'    => 'R',
+        'hour'      => 'R',
+        'day'       => '*',
+        'dayofweek' => '*',
+        'month'     => '*'
+    ),
+    array(
+        'classname' => 'tool_objectfs\task\delete_orphaned_object_metadata',
+        'blocking'  => 0,
+        'minute'    => 'R',
+        'hour'      => 'R',
+        'day'       => '*',
+        'dayofweek' => '*',
+        'month'     => '*'
+    ),
+    array(
+        'classname' => 'tool_objectfs\task\delete_local_empty_directories',
+        'blocking'  => 0,
+        'minute'    => '0',
+        'hour'      => '1',
         'day'       => '*',
         'dayofweek' => '*',
         'month'     => '*'
@@ -56,8 +83,8 @@ $tasks = array(
     array(
         'classname' => 'tool_objectfs\task\pull_objects_from_storage',
         'blocking'  => 0,
-        'minute'    => '*/5',
-        'hour '     => '*',
+        'minute'    => '*',
+        'hour'      => '*',
         'day'       => '*',
         'dayofweek' => '*',
         'month'     => '*'
@@ -66,7 +93,16 @@ $tasks = array(
         'classname' => 'tool_objectfs\task\recover_error_objects',
         'blocking'  => 0,
         'minute'    => '34',
-        'hour '     => '*/12',
+        'hour'      => '*/12',
+        'day'       => '*',
+        'dayofweek' => '*',
+        'month'     => '*'
+    ),
+    array(
+        'classname' => 'tool_objectfs\task\check_objects_location',
+        'blocking'  => 0,
+        'minute'    => 'R',
+        'hour'      => '*',
         'day'       => '*',
         'dayofweek' => '*',
         'month'     => '*'

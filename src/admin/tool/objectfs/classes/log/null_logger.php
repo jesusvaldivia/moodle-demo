@@ -42,5 +42,4 @@ class null_logger extends objectfs_logger {
     public function log_object_query($queryname, $objectcount, $objectsum = 0) {
         return;
     }
-
 }

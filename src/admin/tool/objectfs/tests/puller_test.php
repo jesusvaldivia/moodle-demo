@@ -18,50 +18,50 @@ namespace tool_objectfs\tests;
 
 defined('MOODLE_INTERNAL') || die();
 
-use tool_objectfs\object_file_system;
-use tool_objectfs\object_manipulator\puller;
+use tool_objectfs\local\manager;
+use tool_objectfs\local\object_manipulator\puller;
 
 require_once(__DIR__ . '/classes/test_client.php');
 require_once(__DIR__ . '/tool_objectfs_testcase.php');
 
 class puller_testcase extends tool_objectfs_testcase {
 
-    protected function setUp() {
+    /** @var string $manipulator */
+    protected $manipulator = puller::class;
+
+    protected function setUp(): void {
         parent::setUp();
-        $config = get_objectfs_config();
+        $config = manager::get_objectfs_config();
         $config->sizethreshold = 100;
-        set_objectfs_config($config);
+        manager::set_objectfs_config($config);
         $this->logger = new \tool_objectfs\log\aggregate_logger();
         $this->puller = new puller($this->filesystem, $config, $this->logger);
         ob_start();
     }
 
-    protected function tearDown() {
+    protected function tearDown(): void {
         ob_end_clean();
     }
 
     protected function set_puller_config($key, $value) {
-        $config = get_objectfs_config();
+        $config = manager::get_objectfs_config();
         $config->$key = $value;
+        manager::set_objectfs_config($config);
         $this->puller = new puller($this->filesystem, $config, $this->logger);
     }
 
     public function test_puller_get_candidate_objects_will_get_remote_objects() {
         $remoteobject = $this->create_remote_object();
 
-        $candidateobjects = $this->puller->get_candidate_objects();
-
-        $this->assertArrayHasKey($remoteobject->contenthash, $candidateobjects);
+        self::assertTrue($this->objects_contain_hash($remoteobject->contenthash));
     }
 
     public function test_puller_get_candidate_objects_will_not_get_duplicated_or_local_objects() {
         $localobject = $this->create_local_object();
         $duplicatedobject = $this->create_duplicated_object();
 
-        $candidateobjects = $this->puller->get_candidate_objects();
-
-        $this->assertArrayNotHasKey($localobject->contenthash, $candidateobjects);
-        $this->assertArrayNotHasKey($duplicatedobject->contenthash, $candidateobjects);
+        self::assertFalse($this->objects_contain_hash($localobject->contenthash));
+        self::assertFalse($this->objects_contain_hash($duplicatedobject->contenthash));
     }
 
     public function test_puller_get_candidate_objects_will_not_get_objects_over_sizethreshold() {
@@ -70,9 +70,7 @@ class puller_testcase extends tool_objectfs_testcase {
         $DB->set_field('files', 'filesize', 10, array('contenthash' => $remoteobject->contenthash));
         $this->set_puller_config('sizethreshold', 0);
 
-        $candidateobjects = $this->puller->get_candidate_objects();
-
-        $this->assertArrayNotHasKey($remoteobject->contenthash, $candidateobjects);
+        self::assertFalse($this->objects_contain_hash($remoteobject->contenthash));
     }
 
     public function test_puller_can_pull_remote_file() {
@@ -110,7 +108,4 @@ class puller_testcase extends tool_objectfs_testcase {
         $this->assertTrue($this->is_locally_readable_by_hash($object->contenthash));
         $this->assertFalse($this->is_externally_readable_by_hash($object->contenthash));
     }
-
-
 }
-

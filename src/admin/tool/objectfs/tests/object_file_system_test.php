@@ -18,12 +18,27 @@ namespace tool_objectfs\tests;
 
 defined('MOODLE_INTERNAL') || die();
 
-use tool_objectfs\object_file_system;
+use tool_objectfs\local\store\object_file_system;
+use tool_objectfs\local\manager;
 
 require_once(__DIR__ . '/classes/test_client.php');
 require_once(__DIR__ . '/tool_objectfs_testcase.php');
 
 class object_file_system_testcase extends tool_objectfs_testcase {
+
+    public function set_externalclient_config($key, $value) {
+        // Get a reflection of externalclient object as a property.
+        $reflection = new \ReflectionClass($this->filesystem);
+        $externalclientref = $reflection->getParentClass()->getProperty('externalclient');
+        $externalclientref->setAccessible(true);
+
+        // Get a reflection of externalclient->$key property.
+        $property = new \ReflectionProperty($externalclientref->getValue($this->filesystem), $key);
+        $property->setAccessible(true);
+
+        // Set new value for externalclient->$key property.
+        $property->setValue($externalclientref->getValue($this->filesystem), $value);
+    }
 
     public function test_get_remote_path_from_storedfile_returns_local_path_if_local() {
         $file = $this->create_local_file();
@@ -82,8 +97,8 @@ class object_file_system_testcase extends tool_objectfs_testcase {
         $reflection->setAccessible(true);
         $localpath = $reflection->invokeArgs($this->filesystem, [$filehash, true]);
 
-        $fileperms = substr(sprintf('%o', fileperms($localpath)), -4);
-        $cfgperms = substr(sprintf('%o', $CFG->filepermissions), -4);
+        $fileperms = substr(sprintf('%04o', fileperms($localpath)), -4);
+        $cfgperms = substr(sprintf('%04o', $CFG->filepermissions), -4);
         $this->assertEquals($cfgperms, $fileperms);
     }
 
@@ -191,18 +206,97 @@ class object_file_system_testcase extends tool_objectfs_testcase {
         $this->assertEquals(OBJECT_LOCATION_ERROR, $location);
     }
 
-    public function test_delete_object_from_local_by_hash_if_cant_verify_external_object() {
+    public function test_delete_object_from_local_by_hash_if_can_verify_external_object() {
         $file = $this->create_duplicated_file();
-        $externalpath = $this->get_external_path_from_hash($file->get_contenthash());
+        $contenthash = $file->get_contenthash();
+        $externalpath = $this->get_external_path_from_hash($contenthash);
         $localpath = $this->get_local_path_from_storedfile($file);
 
         $differentfilepath = __DIR__ . '/fixtures/test.txt';
         copy($differentfilepath, $externalpath);
 
-        $location = $this->filesystem->delete_object_from_local_by_hash($file->get_contenthash());
+        $location = $this->filesystem->delete_object_from_local_by_hash($contenthash);
 
-        $this->assertEquals(OBJECT_LOCATION_DUPLICATED, $location);
-        $this->assertTrue(is_readable($localpath));
+        $this->assertEquals(OBJECT_LOCATION_EXTERNAL, $location);
+        $this->assertFalse(is_readable($localpath));
+    }
+
+    /**
+     * @return array
+     */
+    public function delete_empty_folders_provider() {
+        return [
+            [
+                /*
+                    /filedir/test/d1/file1
+                    /filedir/test/d2/file2
+                    deleted: 0 dirs
+                */
+                ['/d1', '/d2'], ['file1', 'file2'], [true, true],  true,
+            ],
+            [
+                /*
+                    /filedir/test/d1/file1
+                    /filedir/test/d2/
+                    deleted: 1dirs
+                        - /filedir/test/d2/
+                */
+                ['/d1', '/d2'], ['file1'], [true, false],  true,
+            ],
+            [
+                /*
+                    /filedir/test/d1/
+                    /filedir/test/d2/file2
+                    deleted: 1 dirs
+                        - /filedir/test/d1/
+                */
+                ['/d1', '/d2'], ['', 'file1'], [false, true],  true,
+            ],
+            [
+                /*
+                    /filedir/test/d1/
+                    /filedir/test/d2/
+                    deleted: 3 dirs
+                        - /filedir/test/d1/
+                        - /filedir/test/d2/
+                        - /filedir/test/
+                */
+                ['/d1', '/d2'], [], [false, false],  false,
+            ],
+        ];
+    }
+
+    /**
+     * @dataProvider delete_empty_folders_provider
+     * @param array $dirs Dirs to be created.
+     * @param array $files Files to be created.
+     * @param array $expectedparentreadable Indicates whether a dir will remain after calling 'delete_empty_folders'.
+     * @param bool $expectedgrandparentpathreadable If grandparent dir exists after calling 'delete_empty_folders'.
+     */
+    public function test_delete_empty_folders(
+        $dirs,
+        $files,
+        $expectedparentreadable,
+        $expectedgrandparentpathreadable
+    ) {
+        global $CFG;
+        $testdir = $CFG->dataroot . '/filedir/test';
+        foreach ($dirs as $key => $dir) {
+            $fullpath = $testdir . $dir;
+            mkdir($fullpath, 0777, true);
+            $file = !empty($files[$key]) ? $files[$key] : '';
+            if ($file !== '') {
+                touch($fullpath . '/' . $file);
+            }
+        }
+        $this->filesystem->delete_empty_dirs($testdir);
+        foreach ($dirs as $key => $dir) {
+            $this->assertEquals($expectedparentreadable[$key], is_readable($testdir . $dir));
+        }
+        $this->assertEquals($expectedgrandparentpathreadable, is_readable($testdir));
+
+        // Totara 12 clean-up.
+        remove_dir($testdir);
     }
 
     public function test_readfile_if_object_is_local() {
@@ -365,5 +459,475 @@ class object_file_system_testcase extends tool_objectfs_testcase {
         $this->assertTrue(rewind($filehandle));
     }
 
-}
+    public function test_object_storage_deleter_can_delete_object_if_enabledelete_is_on_and_object_is_local() {
+        global $CFG;
 
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = true;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_local_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertTrue($this->is_locally_readable_by_hash_in_trashdir($filehash));
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+        $this->assertFalse($this->is_externally_readable_by_hash($filehash));
+    }
+
+    public function test_object_storage_deleter_can_delete_object_if_enabledelete_is_off_and_object_is_local() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = false;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_local_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertTrue($this->is_locally_readable_by_hash_in_trashdir($filehash));
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+        $this->assertFalse($this->is_externally_readable_by_hash($filehash));
+    }
+
+    public function test_object_storage_deleter_can_delete_object_if_enabledelete_is_on_and_object_is_duplicated() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = true;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_duplicated_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+        $this->assertFalse($this->is_externally_readable_by_hash($filehash));
+        $this->assertTrue($this->is_externally_readable_by_hash_in_trashdir($filehash));
+    }
+
+    public function test_object_storage_deleter_can_delete_object_if_enabledelete_is_off_and_object_is_duplicated() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = false;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_duplicated_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+        $this->assertTrue($this->is_externally_readable_by_hash($filehash));
+        $this->assertFalse($this->is_externally_readable_by_hash_in_trashdir($filehash));
+    }
+
+    public function test_object_storage_deleter_can_delete_object_if_enabledelete_is_on_and_object_is_remote() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = true;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_remote_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+        $this->assertFalse($this->is_externally_readable_by_hash($filehash));
+        $this->assertTrue($this->is_externally_readable_by_hash_in_trashdir($filehash));
+    }
+
+    public function test_object_storage_deleter_can_delete_object_if_enabledelete_is_off_and_object_is_remote() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = false;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_remote_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+        $this->assertTrue($this->is_externally_readable_by_hash($filehash));
+        $this->assertFalse($this->is_externally_readable_by_hash_in_trashdir($filehash));
+    }
+
+    public function test_object_storage_locker_can_acquire_lock_if_object_is_not_locked() {
+        $this->filesystem = new test_file_system();
+        $file = $this->create_local_file();
+        $filehash = $file->get_contenthash();
+        $lock = $this->acquire_object_lock($filehash);
+        $this->assertEquals(gettype($lock), 'object');
+        $this->assertEquals(get_class($lock), 'core\lock\lock');
+        $lock->release();
+    }
+
+    public function test_can_recover_object_if_deleted_while_local() {
+        $this->filesystem = new test_file_system();
+        $file = $this->create_local_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->recover_file($file);
+        $this->assertTrue($this->is_locally_readable_by_hash($filehash));
+    }
+
+    public function test_can_recover_object_if_deleted_while_duplicated() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = true;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_duplicated_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->recover_file($file);
+        $this->assertTrue($this->is_externally_readable_by_hash($filehash));
+    }
+
+    public function test_can_recover_object_if_deleted_while_external() {
+        global $CFG;
+
+        $CFG->forced_plugin_settings['tool_objectfs']['deleteexternal'] = true;
+        $this->filesystem = new test_file_system();
+        $file = $this->create_remote_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->recover_file($file);
+        $this->assertTrue($this->is_externally_readable_by_hash($filehash));
+    }
+
+    public function test_can_delete_local_file_if_exists_in_trashdir() {
+        $this->filesystem = new test_file_system();
+        $file = $this->create_local_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+
+        $file = $this->create_local_file();
+        $filehash = $file->get_contenthash();
+        $this->delete_draft_files($filehash);
+        $this->filesystem->remove_file($filehash);
+        $this->assertFalse($this->is_locally_readable_by_hash($filehash));
+    }
+
+    public function test_can_generate_signed_url_by_hash_if_object_is_external() {
+        $this->filesystem = new test_file_system();
+        $file = $this->create_remote_file();
+        $filehash = $file->get_contenthash();
+        try {
+            $signedurl = $this->filesystem->externalclient->generate_presigned_url($filehash);
+            $this->assertTrue($this->is_externally_readable_by_url($signedurl));
+        } catch (\coding_exception $e) {
+            $this->assertEquals($e->a, 'Pre-signed URLs not supported');
+        }
+    }
+
+    public function test_presigned_url_configured_method_returns_false_if_not_configured() {
+        $this->filesystem = new test_file_system();
+        $this->assertFalse($this->filesystem->presigned_url_configured());
+    }
+
+    public function test_presigned_url_configured_method_returns_true_if_configured() {
+        $this->filesystem = new test_file_system();
+        $externalclient = $this->filesystem->get_external_client();
+
+        if (!$externalclient->support_presigned_urls()) {
+            $this->markTestSkipped('Pre-signed URLs not supported for given storage.');
+        }
+
+        $this->set_externalclient_config('enablepresignedurls', '1');
+        $this->assertTrue($this->filesystem->presigned_url_configured());
+    }
+
+    public function test_presigned_url_should_redirect_provider() {
+        $provider = array();
+
+        // Testing defaults.
+        $provider[] = array('Default', 'Default', false);
+
+        // Testing $enablepresignedurls.
+        $provider[] = array(1, 'Default', true);
+        $provider[] = array('1', 'Default', true);
+        $provider[] = array(0, 'Default', false);
+        $provider[] = array('0', 'Default', false);
+        $provider[] = array('', 'Default', false);
+        $provider[] = array(null, 'Default', false);
+
+        // Testing $presignedminfilesize.
+        $provider[] = array(1, 0, true);
+        $provider[] = array(1, '0', true);
+        $provider[] = array(1, '', true);
+
+        // Testing minimum file size to be greater than file size.
+        // 12 is a size of the file with 'test content' content.
+        $provider[] = array(1, 13, false);
+        $provider[] = array(1, '13', false);
+
+        // Testing minimum file size to be less than file size.
+        // 12 is a size of the file with 'test content' content.
+        $provider[] = array(1, 11, true);
+        $provider[] = array(1, '11', true);
+
+        // Testing nulls and empty strings.
+        $provider[] = array(null, null, false);
+        $provider[] = array(null, '', false);
+        $provider[] = array('', null, false);
+        $provider[] = array('', '', false);
+
+        return $provider;
+    }
+
+    /**
+     * @dataProvider test_presigned_url_should_redirect_provider
+     *
+     * @param $enablepresignedurls mixed enable pre-signed URLs.
+     * @param $presignedminfilesize mixed minimum file size to be redirected to pre-signed URL.
+     * @param $result boolean expected result.
+     * @throws \dml_exception
+     */
+    public function test_presigned_url_should_redirect_method_with_data_provider($enablepresignedurls,
+            $presignedminfilesize, $result) {
+        $this->filesystem = new test_file_system();
+        $externalclient = $this->filesystem->get_external_client();
+
+        if (!$externalclient->support_presigned_urls()) {
+            $this->markTestSkipped('Pre-signed URLs not supported for given storage.');
+        }
+
+        if ($enablepresignedurls !== 'Default') {
+            $this->set_externalclient_config('enablepresignedurls', $enablepresignedurls);
+        }
+
+        if ($presignedminfilesize !== 'Default') {
+            $this->set_externalclient_config('presignedminfilesize', $presignedminfilesize);
+        }
+
+        if ($this->filesystem->presigned_url_configured()) {
+            $file = $this->create_local_file('test content');
+            set_config('signingwhitelist', '*', 'tool_objectfs');
+            $this->assertEquals($result, $this->filesystem->presigned_url_should_redirect($file->get_contenthash()));
+            $this->assertEquals($result, $this->filesystem->presigned_url_should_redirect_file($file));
+        } else {
+            $this->assertEquals($result, false);
+        }
+    }
+
+    /**
+     * Data provider for test_get_expiration_time_method_if_supported().
+     *
+     * @return array
+     */
+    public function test_get_expiration_time_method_if_supported_provider() {
+        $now = time();
+
+        // Seconds after the minute from X.
+        $secondsafternow = ($now % MINSECS);
+        $secondsafternowsub100 = $secondsafternow;
+        $secondsafternowadd30 = $secondsafternow;
+        $secondsafternowadd100 = $secondsafternow;
+        $secondsafternowaddweek = ($now + WEEKSECS) % MINSECS;
+
+        return [
+            // Default Pre-Signed URL expiration time and int-like 'Expires' header.
+            [7200, $now, 0, $now + 7200 + MINSECS - $secondsafternow],
+            [7200, $now, $now - 100, $now + (2 * MINSECS) - $secondsafternowsub100],
+            [7200, $now, $now + 30, $now + (2 * MINSECS) - $secondsafternowadd30],
+            [7200, $now, $now + 100, $now + (2 * MINSECS) - $secondsafternowadd100],
+            [7200, $now, $now + WEEKSECS + HOURSECS, $now + WEEKSECS - MINSECS - $secondsafternowaddweek],
+
+            // Default Pre-Signed URL expiration time and string-like 'Expires' header.
+            [7200, $now, 'Thu, 01 Jan 1970 00:00:00 GMT', $now + 7200 + MINSECS - $secondsafternow],
+            [7200, $now, userdate($now - 100, '%a, %d %b %Y %H:%M:%S'), $now + (2 * MINSECS) - $secondsafternowsub100],
+            [7200, $now, userdate($now + 30, '%a, %d %b %Y %H:%M:%S'), $now + (2 * MINSECS) - $secondsafternowadd30],
+            [7200, $now, userdate($now + 100, '%a, %d %b %Y %H:%M:%S'), $now + (2 * MINSECS) - $secondsafternowadd100],
+            [7200, $now, userdate($now + WEEKSECS + HOURSECS, '%a, %d %b %Y %H:%M:%S'), $now + WEEKSECS - MINSECS - $secondsafternowaddweek],
+
+            // Custom Pre-Signed URL expiration time and int-like 'Expires' header.
+            [0, $now, 0, $now + (2 * MINSECS) - $secondsafternow],
+            [600, $now, 0, $now + 600 + MINSECS - $secondsafternow],
+            [600, $now, $now - 100, $now + (2 * MINSECS) - $secondsafternowsub100],
+            [600, $now, $now + 30, $now + (2 * MINSECS) - $secondsafternowadd30],
+            [600, $now, $now + 100, $now + (2 * MINSECS) - $secondsafternowadd100],
+            [600, $now, $now + WEEKSECS + HOURSECS, $now + WEEKSECS - MINSECS - $secondsafternowaddweek],
+
+            // Custom Pre-Signed URL expiration time and string-like 'Expires' header.
+            [0, $now, 'Thu, 01 Jan 1970 00:00:00 GMT', $now + (2 * MINSECS) - $secondsafternow],
+            [600, $now, 'Thu, 01 Jan 1970 00:00:00 GMT', $now + 600 + MINSECS - $secondsafternow],
+            [600, $now, userdate($now - 100, '%a, %d %b %Y %H:%M:%S'), $now + (2 * MINSECS) - $secondsafternowsub100],
+            [600, $now, userdate($now + 30, '%a, %d %b %Y %H:%M:%S'), $now + (2 * MINSECS) - $secondsafternowadd30],
+            [600, $now, userdate($now + 100, '%a, %d %b %Y %H:%M:%S'), $now + (2 * MINSECS) - $secondsafternowadd100],
+            [600, $now, userdate($now + WEEKSECS + HOURSECS, '%a, %d %b %Y %H:%M:%S'), $now + WEEKSECS - MINSECS - $secondsafternowaddweek],
+        ];
+    }
+
+    /**
+     * Test S3 and DO clients get_expiration_time() method.
+     * Available when running integration tests.
+     *
+     * @dataProvider test_get_expiration_time_method_if_supported_provider
+     *
+     * @param int   $expirationsetting Pre-Signed URL expiration time
+     * @param int   $now               Now timestamp
+     * @param mixed $expiresheader     'Expires' header
+     * @param int   $expectedresult    Expiration timestamp for URL
+     */
+    public function test_get_expiration_time_method_if_supported($expirationsetting, $now, $expiresheader, $expectedresult) {
+        $this->filesystem = new test_file_system();
+        $externalclient = $this->filesystem->get_external_client();
+
+        if (!$externalclient->support_presigned_urls()) {
+            $this->markTestSkipped('Pre-signed URLs not supported for given storage.');
+        }
+
+        if ($expirationsetting !== 7200) {
+            $this->set_externalclient_config('expirationtime', $expirationsetting);
+        }
+
+        $this->assertEquals($expectedresult, $externalclient->get_expiration_time($now, $expiresheader));
+    }
+
+    /**
+     * Test copy_content_from_storedfile() method does direct copying.
+     */
+    public function test_copy_content_from_storedfile() {
+        $file = $this->create_remote_file();
+        // Confirm, that the file is not readable locally.
+        $this->assertFalse($this->filesystem->is_file_readable_locally_by_storedfile($file));
+        // Get the current remote path.
+        $currentpath = $this->filesystem->get_remote_path_from_storedfile($file);
+        // Copy the file to new external path.
+        $result = $this->filesystem->copy_content_from_storedfile($file, $currentpath . '_new');
+        // Confirm the file copied successfully and method returns true.
+        $this->assertTrue($result);
+        // Confirm, that the file wasn't downloaded locally and was copied directly to new path.
+        $this->assertFalse($this->filesystem->is_file_readable_locally_by_storedfile($file));
+    }
+
+    /**
+     * Test get_filesize_by_contenthash() returns file size by its contenthash.
+     */
+    public function test_get_filesize_by_contenthash() {
+        // Test existing file.
+        $file = $this->create_local_file();
+        $actual = $this->filesystem->get_filesize_by_contenthash($file->get_contenthash());
+        $this->assertEquals($file->get_filesize(), $actual);
+        // Test missing file.
+        $fakehash = 'this is a fake hash';
+        $actual = $this->filesystem->get_filesize_by_contenthash($fakehash);
+        $this->assertFalse($actual);
+    }
+
+    /**
+     * Data provider for test_get_valid_http_ranges().
+     *
+     * @return array
+     */
+    public function test_get_valid_http_ranges_provider() {
+        return [
+            ['', 0, false],
+            ['bytes=0-', 100, (object)['rangefrom' => 0, 'rangeto' => 99, 'length' => 100]],
+            ['bytes=0-49/100', 100, (object)['rangefrom' => 0, 'rangeto' => 49, 'length' => 50]],
+            ['bytes=50-', 100, (object)['rangefrom' => 50, 'rangeto' => 99, 'length' => 50]],
+            ['bytes=50-80/100', 100, (object)['rangefrom' => 50, 'rangeto' => 80, 'length' => 31]],
+        ];
+    }
+
+    /**
+     * Test get_valid_http_ranges() returns range object depending on $_SERVER['HTTP_RANGE'] and file size.
+     *
+     * @dataProvider test_get_valid_http_ranges_provider
+     *
+     * @param string $httprangeheader HTTP_RANGE header.
+     * @param int    $filesize        File size.
+     * @param mixed  $expectedresult  Expected result.
+     */
+    public function test_get_valid_http_ranges($httprangeheader, $filesize, $expectedresult) {
+        $_SERVER['HTTP_RANGE'] = $httprangeheader;
+        $actual = $this->filesystem->get_valid_http_ranges($filesize);
+        $this->assertEquals($expectedresult, $actual);
+    }
+
+    /**
+     * Data provider for test_curl_range_request_to_presigned_url().
+     *
+     * @return array
+     */
+    public function test_curl_range_request_to_presigned_url_provider() {
+        return [
+            ['15-bytes string', (object)['rangefrom' => 0, 'rangeto' => 14, 'length' => 15], '15-bytes string'],
+            ['15-bytes string', (object)['rangefrom' => 0, 'rangeto' => 9, 'length' => 10], '15-bytes s'],
+            ['15-bytes string', (object)['rangefrom' => 5, 'rangeto' => 14, 'length' => 10], 'tes string'],
+        ];
+    }
+
+    /**
+     * Test external client curl_range_request_to_presigned_url() returns expected result.
+     *
+     * @dataProvider test_curl_range_request_to_presigned_url_provider
+     *
+     * @param string $content        File content.
+     * @param mixed  $ranges         Request ranges object.
+     * @param string $expectedresult Expected result.
+     */
+    public function test_curl_range_request_to_presigned_url($content, $ranges, $expectedresult) {
+        if (!$this->filesystem->get_external_client()->support_presigned_urls()) {
+            $this->markTestSkipped('Pre-signed URLs not supported for given storage.');
+        }
+        $file = $this->create_remote_file($content);
+        $externalclient = $this->filesystem->get_external_client();
+        // Test good response.
+        $actual = $externalclient->curl_range_request_to_presigned_url($file->get_contenthash(), $ranges, []);
+        $this->assertEquals($expectedresult, $actual['content']);
+        $this->assertEquals('206 Partial Content', manager::get_header($actual['responseheaders'], 'HTTP/1.1'));
+        // Test bad response.
+        $actual = $externalclient->curl_range_request_to_presigned_url($file->get_contenthash() . '_fake', $ranges, []);
+        $this->assertEquals('404 Not Found', manager::get_header($actual['responseheaders'], 'HTTP/1.1'));
+    }
+
+    /**
+     * Test external client test_range_request() method.
+     */
+    public function test_test_range_request() {
+        $externalclient = $this->filesystem->get_external_client();
+        if ($externalclient->support_presigned_urls()) {
+            $this->assertTrue($externalclient->test_range_request($this->filesystem)->result);
+        } else {
+            $this->assertFalse($externalclient->test_range_request($this->filesystem)->result);
+        }
+    }
+
+    /**
+     * Test that is_configured() returns true by default.
+     */
+    public function test_is_configured_default() {
+        $this->assertTrue($this->filesystem->is_configured());
+    }
+
+    /**
+     * Test that is_configured() returns false when the client SDK does not exist.
+     */
+    public function test_is_configured_fake_autoloader() {
+        $this->assertTrue($this->filesystem->is_configured());
+        $clientref = new \ReflectionClass($this->filesystem->externalclient);
+        $autoloaderref = $clientref->getParentClass()->getProperty('autoloader');
+        $autoloaderref->setAccessible(true);
+        $autoloader = $autoloaderref->getValue($this->filesystem->externalclient);
+        $this->set_externalclient_config('autoloader', $autoloader . '_fake');
+        $this->assertFalse($this->filesystem->is_configured());
+    }
+
+    /**
+     * Test that is_configured() returns false when filesystem set in config.php
+     * and filesystem set via admin settings do not match.
+     */
+    public function test_is_configured_settings_do_not_match() {
+        global $CFG;
+        $this->assertTrue($this->filesystem->is_configured());
+        $CFG->alternative_file_system_class = 'fake_file_system';
+        $this->assertFalse($this->filesystem->is_configured());
+    }
+
+    /**
+     * Test that is_configured() returns false when alternative_file_system_class is not set in config.php.
+     */
+    public function test_is_configured_alternative_file_system_class_is_not_set() {
+        global $CFG;
+        $this->assertTrue($this->filesystem->is_configured());
+        unset($CFG->alternative_file_system_class);
+        $this->assertFalse($this->filesystem->is_configured());
+    }
+}

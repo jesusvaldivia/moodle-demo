@@ -16,26 +16,30 @@
 
 namespace tool_objectfs\tests;
 
+use tool_objectfs\local\manager;
+
 defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/tool_objectfs_testcase.php');
 
 /**
  * End to end tests for tasks. Make sure all the plumbing is ok.
  */
 class tasks_testcase extends tool_objectfs_testcase {
 
-    protected function setUp() {
+    protected function setUp(): void {
         parent::setUp();
         ob_start();
     }
 
-    protected function tearDown() {
+    protected function tearDown(): void {
         ob_end_clean();
     }
 
     public function test_run_legacy_cron() {
-        $config = get_objectfs_config();
+        $config = manager::get_objectfs_config();
         $config->enabletasks = true;
-        set_objectfs_config($config);
+        manager::set_objectfs_config($config);
         tool_objectfs_cron();
     }
 
@@ -46,16 +50,21 @@ class tasks_testcase extends tool_objectfs_testcase {
             return true;
         }
 
-        $config = get_objectfs_config();
+        $config = manager::get_objectfs_config();
         $config->enabletasks = true;
         $config->filesystem = '\\tool_objectfs\\tests\\test_file_system';
-        set_objectfs_config($config);
+        manager::set_objectfs_config($config);
 
-        $scheduledtasknames = array('delete_local_objects',
-                                    'generate_status_report',
-                                    'pull_objects_from_storage',
-                                    'push_objects_to_storage',
-                                    'recover_error_objects');
+        $scheduledtasknames = [
+            'delete_local_objects',
+            'delete_local_empty_directories',
+            'generate_status_report',
+            'pull_objects_from_storage',
+            'push_objects_to_storage',
+            'recover_error_objects',
+            'check_objects_location',
+            'delete_orphaned_object_metadata',
+        ];
 
         foreach ($scheduledtasknames as $taskname) {
             $task = \core\task\manager::get_scheduled_task('\\tool_objectfs\\task\\' . $taskname);
