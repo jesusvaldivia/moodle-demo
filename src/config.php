@@ -19,7 +19,7 @@ $CFG->admin     = 'admin';
 $CFG->sslproxy = true;
 
 $CFG->directorypermissions = 0777;
-// $CFG->alternative_file_system_class = '\tool_objectfs\s3_file_system';
+$CFG->alternative_file_system_class = '\tool_objectfs\s3_file_system';
 
 if(getenv("REDIS_SESSION") == "enable"){
 $CFG->session_handler_class = '\core\session\redis';
