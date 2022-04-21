@@ -16,8 +16,9 @@ $CFG->wwwroot   = getenv("HOST_DOMAIN");
 $CFG->dataroot  = '/var/moodledata';
 $CFG->localcachedir = '/var/localcache';
 $CFG->admin     = 'admin';
+if(getenv("SSL_PROXY") == "enable"){
 $CFG->sslproxy = true;
-
+}
 $CFG->directorypermissions = 0777;
 $CFG->alternative_file_system_class = '\tool_objectfs\s3_file_system';
 
