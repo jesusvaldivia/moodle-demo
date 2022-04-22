@@ -32,9 +32,6 @@ defined('MOODLE_INTERNAL') || die();
 function xmldb_message_popup_upgrade($oldversion) {
     global $DB;
 
-    // Automatically generated Moodle v3.5.0 release upgrade line.
-    // Put any upgrade step following this.
-
     // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
@@ -70,9 +67,6 @@ function xmldb_message_popup_upgrade($oldversion) {
     }
 
     // Automatically generated Moodle v3.9.0 release upgrade line.
-    // Put any upgrade step following this.
-
-    // Automatically generated Moodle v3.10.0 release upgrade line.
     // Put any upgrade step following this.
 
     return true;

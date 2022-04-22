@@ -22,24 +22,39 @@
  * @since      2.9
  */
 define([
-        'core/mustache',
-        'jquery',
-        'core/ajax',
-        'core/str',
-        'core/notification',
-        'core/url',
-        'core/config',
-        'core/localstorage',
-        'core/icon_system',
-        'core/event',
-        'core/yui',
-        'core/log',
-        'core/truncate',
-        'core/user_date',
-        'core/pending',
-    ],
-    function(mustache, $, ajax, str, notification, coreurl, config, storage, IconSystem, event, Y, Log, Truncate, UserDate,
-        Pending) {
+    'core/mustache',
+    'jquery',
+    'core/ajax',
+    'core/str',
+    'core/notification',
+    'core/url',
+    'core/config',
+    'core/localstorage',
+    'core/icon_system',
+    'core_filters/events',
+    'core/yui',
+    'core/log',
+    'core/truncate',
+    'core/user_date',
+    'core/pending',
+],
+function(
+    mustache,
+    $,
+    ajax,
+    str,
+    notification,
+    coreurl,
+    config,
+    storage,
+    IconSystem,
+    filterEvents,
+    Y,
+    Log,
+    Truncate,
+    UserDate,
+    Pending
+) {
 
     // Module variables.
     /** @var {Number} uniqInstances Count of times this constructor has been called. */
@@ -558,6 +573,25 @@ define([
     };
 
     /**
+     * String helper to render {{#cleanstr}}abd component { a : 'fish'}{{/cleanstr}}
+     * into a get_string following by an HTML escape.
+     *
+     * @method cleanStringHelper
+     * @private
+     * @param {object} context The current mustache context.
+     * @param {string} sectionText The text to parse the arguments from.
+     * @param {function} helper Used to render subsections of the text.
+     * @return {string}
+     */
+    Renderer.prototype.cleanStringHelper = function(context, sectionText, helper) {
+        var str = this.stringHelper(context, sectionText, helper);
+
+        // We're going to use [[_cx]] format for clean strings, where x is a number.
+        // Hence, replacing 's' with 'c' in the placeholder that stringHelper returns.
+        return str.replace('s', 'c');
+    };
+
+    /**
      * Quote helper used to wrap content in quotes, and escape all quotes present in the content.
      *
      * @method quoteHelper
@@ -703,6 +737,7 @@ define([
         this.requiredJS = [];
         context.uniqid = (uniqInstances++);
         context.str = this.addHelperFunction(this.stringHelper, context);
+        context.cleanstr = this.addHelperFunction(this.cleanStringHelper, context);
         context.pix = this.addHelperFunction(this.pixHelper, context);
         context.js = this.addHelperFunction(this.jsHelper, context);
         context.quote = this.addHelperFunction(this.quoteHelper, context);
@@ -746,13 +781,14 @@ define([
      * @return {String} The treated content.
      */
     Renderer.prototype.treatStringsInContent = function(content, strings) {
-        var pattern = /\[\[_s\d+\]\]/,
+        var pattern = /\[\[_(s|c)\d+\]\]/,
             treated,
             index,
             strIndex,
             walker,
             char,
-            strFinal;
+            strFinal,
+            isClean;
 
         do {
             treated = '';
@@ -762,8 +798,9 @@ define([
                 // Copy the part prior to the placeholder to the treated string.
                 treated += content.substring(0, index);
                 content = content.substr(index);
+                isClean = content[3] == 'c';
                 strIndex = '';
-                walker = 4; // 4 is the length of '[[_s'.
+                walker = 4; // 4 is the length of either '[[_s' or '[[_c'.
 
                 // Walk the characters to manually extract the index of the string from the placeholder.
                 char = content.substr(walker, 1);
@@ -776,11 +813,15 @@ define([
                 // Get the string, add it to the treated result, and remove the placeholder from the content to treat.
                 strFinal = strings[parseInt(strIndex, 10)];
                 if (typeof strFinal === 'undefined') {
-                    Log.debug('Could not find string for pattern [[_s' + strIndex + ']].');
+                    Log.debug('Could not find string for pattern [[_' + (isClean ? 'c' : 's') + strIndex + ']].');
                     strFinal = '';
                 }
+                if (isClean) {
+                    strFinal = mustache.escape(strFinal);
+                }
                 treated += strFinal;
-                content = content.substr(6 + strIndex.length); // 6 is the length of the placeholder without the index: '[[_s]]'.
+                content = content.substr(6 + strIndex.length); // 6 is the length of the placeholder without the index.
+                                                               // That's either '[[_s]]' or '[[_c]]'.
 
                 // Find the next placeholder.
                 index = content.search(pattern);
@@ -907,6 +948,7 @@ define([
      * @param {String} newJS - Javascript to run after the insertion.
      * @param {Boolean} replaceChildNodes - Replace only the childnodes, alternative is to replace the entire node.
      * @return {Array} The list of new DOM Nodes
+     * @fires event:filterContentUpdated
      */
     var domReplace = function(element, newHTML, newJS, replaceChildNodes) {
         var replaceNode = $(element);
@@ -934,7 +976,7 @@ define([
             // Run any javascript associated with the new HTML.
             runTemplateJS(newJS);
             // Notify all filters about the new content.
-            event.notifyFilterContentUpdated(newNodes);
+            filterEvents.notifyFilterContentUpdated(newNodes);
 
             return newNodes.get();
         }
@@ -1079,6 +1121,7 @@ define([
      * @param {String} html - HTML to prepend
      * @param {String} js - Javascript to run after we prepend the html
      * @return {Array} The list of new DOM Nodes
+     * @fires event:filterContentUpdated
      */
     var domPrepend = function(element, html, js) {
         var node = $(element);
@@ -1089,7 +1132,7 @@ define([
             // Run any javascript associated with the new HTML.
             runTemplateJS(js);
             // Notify all filters about the new content.
-            event.notifyFilterContentUpdated(node);
+            filterEvents.notifyFilterContentUpdated(node);
 
             return newContent.get();
         }
@@ -1106,6 +1149,7 @@ define([
      * @param {String} html - HTML to append
      * @param {String} js - Javascript to run after we append the html
      * @return {Array} The list of new DOM Nodes
+     * @fires event:filterContentUpdated
      */
     var domAppend = function(element, html, js) {
         var node = $(element);
@@ -1116,7 +1160,7 @@ define([
             // Run any javascript associated with the new HTML.
             runTemplateJS(js);
             // Notify all filters about the new content.
-            event.notifyFilterContentUpdated(node);
+            filterEvents.notifyFilterContentUpdated(node);
 
             return newContent.get();
         }

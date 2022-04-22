@@ -23,13 +23,22 @@
  * @since 3.8
  */
 
-import {types} from 'core_form/events';
+import {eventTypes} from 'core_form/events';
 
 /** @property {number} ID for setInterval used when polling for download cookie */
 let cookieListener = 0;
 
 /** @property {Array} Array of buttons that need re-enabling if we get a download cookie */
 const cookieListeningButtons = [];
+
+/** @property {number} Number of files uploading. */
+let currentUploadCount = 0;
+
+/** @property {Array} Array of buttons that need re-enabling if we get a upload process. */
+const uploadListeningButtons = [];
+
+/** @property {Boolean} Is upload listeners registered? */
+let uploadListenersRegistered = false;
 
 /**
  * Listens in case a download cookie is provided.
@@ -80,24 +89,50 @@ const clearDownloadCookie = () => {
 };
 
 /**
+ * Enable submit buttons when all files are uploaded.
+ */
+const checkUploadCount = () => {
+    if (currentUploadCount) {
+        uploadListeningButtons.forEach(button => {
+            button.disabled = true;
+        });
+    } else {
+        uploadListeningButtons.forEach(button => {
+            button.disabled = false;
+        });
+    }
+};
+
+/**
  * Initialises submit buttons.
  *
  * @param {String} elementId Form element
+ * @listens event:uploadStarted
+ * @listens event:uploadCompleted
  */
 export const init = (elementId) => {
     const button = document.getElementById(elementId);
+    // If buttons are disabled by default, we do not enable them when file upload completed event is fired.
+    if (!button.disabled) {
+        uploadListeningButtons.push(button);
+    }
 
-    // Add event listener for file upload start.
-    document.addEventListener(types.uploadStarted, e => {
-        window.console.log(e.target); // This will be the element/section where the file is uploaded to.
-        button.disabled = true;
-    });
+    if (!uploadListenersRegistered) {
+        // Add event listener for file upload start.
+        document.addEventListener(eventTypes.uploadStarted, e => {
+            window.console.log(e.target); // This will be the element/section where the file is uploaded to.
+            currentUploadCount++;
+            checkUploadCount();
+        });
 
-    // Add event listener for file upload complete.
-    document.addEventListener(types.uploadCompleted, e => {
-        window.console.log(e.target); // This will be the element/section where the file is uploaded to.
-        button.disabled = false;
-    });
+        // Add event listener for file upload complete.
+        document.addEventListener(eventTypes.uploadCompleted, e => {
+            window.console.log(e.target); // This will be the element/section where the file is uploaded to.
+            currentUploadCount--;
+            checkUploadCount();
+        });
+        uploadListenersRegistered = true;
+    }
 
     // If the form has double submit protection disabled, do nothing.
     if (button.form.dataset.doubleSubmitProtection === 'off') {

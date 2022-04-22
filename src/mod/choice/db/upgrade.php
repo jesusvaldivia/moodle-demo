@@ -26,9 +26,6 @@ function xmldb_choice_upgrade($oldversion) {
 
     $dbman = $DB->get_manager();
 
-    // Automatically generated Moodle v3.5.0 release upgrade line.
-    // Put any upgrade step following this.
-
     // Automatically generated Moodle v3.6.0 release upgrade line.
     // Put any upgrade step following this.
 
@@ -53,9 +50,5 @@ function xmldb_choice_upgrade($oldversion) {
         // Choice savepoint reached.
         upgrade_mod_savepoint(true, 2020061600, 'choice');
     }
-
-    // Automatically generated Moodle v3.10.0 release upgrade line.
-    // Put any upgrade step following this.
-
     return true;
 }

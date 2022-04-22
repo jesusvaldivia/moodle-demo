@@ -35,7 +35,7 @@ function xmldb_paygw_paypal_upgrade(int $oldversion): bool {
 
     $dbman = $DB->get_manager();
 
-    if ($oldversion < 2020110901) {
+    if ($oldversion < 2021052501) {
         // Define key paymentid (foreign-unique) to be added to paygw_paypal.
         $table = new xmldb_table('paygw_paypal');
         $key = new xmldb_key('paymentid', XMLDB_KEY_FOREIGN_UNIQUE, ['paymentid'], 'payments', ['id']);
@@ -44,7 +44,7 @@ function xmldb_paygw_paypal_upgrade(int $oldversion): bool {
         $dbman->add_key($table, $key);
 
         // Paypal savepoint reached.
-        upgrade_plugin_savepoint(true, 2020110901, 'paygw', 'paypal');
+        upgrade_plugin_savepoint(true, 2021052501, 'paygw', 'paypal');
     }
 
     return true;

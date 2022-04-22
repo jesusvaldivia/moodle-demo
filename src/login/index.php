@@ -218,7 +218,7 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
             // auth plugins can temporarily override this from loginpage_hook()
             // do not save $CFG->nolastloggedin in database!
 
-        } else if (empty($CFG->rememberusername) or ($CFG->rememberusername == 2 and empty($frm->rememberusername))) {
+        } else if (empty($CFG->rememberusername)) {
             // no permanent cookies, delete old one if exists
             set_moodle_cookie('');
 
@@ -380,10 +380,3 @@ if (isloggedin() and !isguestuser()) {
 }
 
 echo $OUTPUT->footer();
-
-
-if (get_moodle_cookie() == "")
-{
-$_SESSION['SPS']="IEDUCA";
-}
-

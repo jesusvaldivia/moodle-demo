@@ -24,6 +24,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use core\report_helper;
+
 require_once(__DIR__.'/../../config.php');
 require_once("{$CFG->libdir}/completionlib.php");
 
@@ -66,7 +68,8 @@ $sifirst = optional_param('sifirst', 'all', PARAM_NOTAGS);
 $silast  = optional_param('silast', 'all', PARAM_NOTAGS);
 
 // Whether to show extra user identity information
-$extrafields = get_extra_user_fields($context);
+// TODO Does not support custom user profile fields (MDL-70456).
+$extrafields = \core_user\fields::get_identity_fields($context, false);
 $leftcols = 1 + count($extrafields);
 
 // Check permissions
@@ -144,7 +147,7 @@ if ($csv) {
     $shortname = format_string($course->shortname, true, array('context' => $context));
     $shortname = preg_replace('/[^a-z0-9-]/', '_',core_text::strtolower(strip_tags($shortname)));
 
-    $export = new csv_export_writer();
+    $export = new csv_export_writer('comma', '"', 'application/download', $excel);
     $export->set_filename('completion-'.$shortname);
 
 } else {
@@ -155,6 +158,9 @@ if ($csv) {
     $PAGE->set_heading($course->fullname);
 
     echo $OUTPUT->header();
+    // Print the selected dropdown.
+    $pluginname = get_string('pluginname', 'report_completion');
+    report_helper::print_report_selector($pluginname);
 
     // Handle groups (if enabled)
     groups_print_course_menu($course, $CFG->wwwroot.'/report/completion/index.php?course='.$course->id);
@@ -440,7 +446,7 @@ if (!$csv) {
     // Print user identity columns
     foreach ($extrafields as $field) {
         echo '<th scope="col" class="completion-identifyfield">' .
-                get_user_field_name($field) . '</th>';
+                \core_user\fields::get_display_name($field) . '</th>';
     }
 
     ///
@@ -511,7 +517,7 @@ if (!$csv) {
     $row[] = get_string('id', 'report_completion');
     $row[] = get_string('name', 'report_completion');
     foreach ($extrafields as $field) {
-       $row[] = get_user_field_name($field);
+        $row[] = \core_user\fields::get_display_name($field);
     }
 
     // Add activity headers

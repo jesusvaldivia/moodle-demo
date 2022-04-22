@@ -28,7 +28,7 @@ define([
     'core/key_codes',
     'core/custom_interaction_events',
     'core/modal_backdrop',
-    'core/event',
+    'core_filters/events',
     'core/modal_events',
     'core/local/aria/focuslock',
     'core/pending',
@@ -41,7 +41,7 @@ define([
     KeyCodes,
     CustomEvents,
     ModalBackdrop,
-    Event,
+    FilterEvents,
     ModalEvents,
     FocusLock,
     Pending,
@@ -321,6 +321,7 @@ define([
      *
      * @method setBody
      * @param {(string|object)} value The body string or jQuery promise which resolves to the body.
+     * @fires event:filterContentUpdated
      */
     Modal.prototype.setBody = function(value) {
         this.bodyPromise = $.Deferred();
@@ -330,7 +331,7 @@ define([
         if (typeof value === 'string') {
             // Just set the value if it's a string.
             body.html(value);
-            Event.notifyFilterContentUpdated(body);
+            FilterEvents.notifyFilterContentUpdated(body);
             this.getRoot().trigger(ModalEvents.bodyRendered, this);
             this.bodyPromise.resolve(body);
         } else {
@@ -421,7 +422,7 @@ define([
                 return result;
             }.bind(this))
             .then(function(result) {
-                Event.notifyFilterContentUpdated(body);
+                FilterEvents.notifyFilterContentUpdated(body);
                 this.getRoot().trigger(ModalEvents.bodyRendered, this);
                 return result;
             }.bind(this))
@@ -442,6 +443,24 @@ define([
             })
             .fail(Notification.exception);
         }
+    };
+
+    /**
+     * Alternative to setBody() that can be used from non-Jquery modules
+     *
+     * @param {Promise} promise promise that returns {html, js} object
+     * @return {Promise}
+     */
+    Modal.prototype.setBodyContent = function(promise) {
+        // Call the leegacy API for now and pass it a jQuery Promise.
+        // This is a non-spec feature of jQuery and cannot be produced with spec promises.
+        // We can encourage people to migrate to this approach, and in future we can swap
+        // it so that setBody() calls setBodyPromise().
+        return promise.then(({html, js}) => this.setBody($.when(html, js)))
+            .catch(exception => {
+                this.hide();
+                throw exception;
+            });
     };
 
     /**

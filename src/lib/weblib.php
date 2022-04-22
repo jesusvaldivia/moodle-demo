@@ -2576,11 +2576,6 @@ function get_group_picture_url($group, $courseid, $large = false, $includetoken 
         return;
     }
 
-    // If picture is hidden, only show to those with course:managegroups.
-    if ($group->hidepicture and !has_capability('moodle/course:managegroups', $context)) {
-        return;
-    }
-
     if ($large) {
         $file = 'f1';
     } else {
@@ -2716,7 +2711,7 @@ function navmenulist($course, $sections, $modinfo, $strsection, $strjumpto, $wid
         $class = 'activity '.$mod->modname;
         $class .= ($cmid == $mod->id) ? ' selected' : '';
         $menu[] = '<li class="'.$class.'">'.
-                  $OUTPUT->image_icon('icon', '', $mod->modname).
+                  $OUTPUT->image_icon('monologo', '', $mod->modname).
                   '<a href="'.$CFG->wwwroot.'/mod/'.$url.'">'.$mod->name.'</a></li>';
     }
 

@@ -1,7 +1,7 @@
 H5P PHP library
 ---------------
 
-Downloaded last release from: https://github.com/h5p/h5p-php-library/releases
+Downloaded last release from:  https://github.com/h5p/h5p-php-library/tags
 
 Import procedure:
 
@@ -14,7 +14,8 @@ Removed:
 Added:
  * readme_moodle.txt
 
-Downloaded version: 1.24.2 release
+NOTICE:
+ * We are following the composer version, 1.24.x according the suggestion from Joubel.
 
 Changes:
 1. In order to allow the dependency path to be overridden by child H5PCore classes, a couple of minor changes have been added to the
@@ -25,7 +26,7 @@ h5p.classes.php file:
       has been changed to:
         $dependency['path'] = $this->getDependencyPath($dependency);
 
-     - The method getDependencyPath has been added (line 2455). It might be rewritten by child classes.
+     - The method getDependencyPath has been added (line 2460). It might be rewritten by child classes.
 A PR has been sent to the H5P library with these changes:
 https://github.com/h5p/h5p-php-library/compare/master...andrewnicols:libraryPathSubclass
 Hopefully, when upgrading, these patch won't be needed because it will be included in the H5P library by default.
@@ -38,6 +39,7 @@ h5p.classes.php file:
   - Into hashToken method:
     Declare the global $SESSION.
     Change all the $_SESSION by $SESSION.
+    Change all the $_SESSION['xxxx'] by $SESSION->xxxx.
 A script for testing this part can be found in MDL-68068
 
 
@@ -74,3 +76,11 @@ with the previous patched and minified JQuery version.
  *
  * @member
  */
+
+
+4. Add namespace to this library to avoid collision. It means:
+
+- Add the "namespace Moodle;" line at the top of all the h5p*.php files in the root folder.
+- Replace \H5Pxxx uses to H5Pxxx (for instance, in h5p-default-storage.class.php there are several references to \H5PCore that
+must be replaced with H5PCore).
+- Add "use ZipArchive;" in h5p.classes.h5p (check that it's still used before replacing it when upgrading the library).

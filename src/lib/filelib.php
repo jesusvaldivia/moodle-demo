@@ -1107,6 +1107,12 @@ function file_save_draft_area_files($draftitemid, $contextid, $component, $filea
         return $text;
     }
 
+    if ($itemid === false) {
+        // Catch a potentially dangerous coding error.
+        throw new coding_exception('file_save_draft_area_files was called with $itemid false. ' .
+                "This suggests a bug, because it would wipe all ($contextid, $component, $filearea) files.");
+    }
+
     $usercontext = context_user::instance($USER->id);
     $fs = get_file_storage();
 
@@ -2499,6 +2505,9 @@ function file_safe_save_content($content, $destination) {
  * @param array $options An array of options, currently accepts:
  *                       - (string) cacheability: public, or private.
  *                       - (string|null) immutable
+ *                       - (bool) dontforcesvgdownload: true if force download should be disabled on SVGs.
+ *                                Note: This overrides a security feature, so should only be applied to "trusted" content
+ *                                (eg module content that is created using an XSS risk flagged capability, such as SCORM).
  * @return null script execution stopped unless $dontdie is true
  */
 function send_file($path, $filename, $lifetime = null , $filter=0, $pathisstring=false, $forcedownload=false, $mimetype='',
@@ -2529,10 +2538,10 @@ function send_file($path, $filename, $lifetime = null , $filter=0, $pathisstring
         $filename = rawurlencode($filename);
     }
 
-    // We need to force download and force filter the file content for the SVG file.
-    if (file_is_svg_image_from_mimetype($mimetype)) {
+    // Make sure we force download of SVG files, unless the module explicitly allows them (eg within SCORM content).
+    // This is for security reasons (https://digi.ninja/blog/svg_xss.php).
+    if (file_is_svg_image_from_mimetype($mimetype) && empty($options['dontforcesvgdownload'])) {
         $forcedownload = true;
-        $filter = 1;
     }
 
     if ($forcedownload) {
@@ -2669,6 +2678,8 @@ function send_file($path, $filename, $lifetime = null , $filter=0, $pathisstring
 function send_stored_file($stored_file, $lifetime=null, $filter=0, $forcedownload=false, array $options=array()) {
     global $CFG, $COURSE;
 
+    static $recursion = 0;
+
     if (empty($options['filename'])) {
         $filename = null;
     } else {
@@ -2712,6 +2723,13 @@ function send_stored_file($stored_file, $lifetime=null, $filter=0, $forcedownloa
 
     // handle external resource
     if ($stored_file && $stored_file->is_external_file() && !isset($options['sendcachedexternalfile'])) {
+
+        // Have we been here before?
+        $recursion++;
+        if ($recursion > 10) {
+            throw new coding_exception('Recursive file serving detected');
+        }
+
         $stored_file->send_file($lifetime, $filter, $forcedownload, $options);
         die;
     }
@@ -3079,7 +3097,7 @@ class curl {
     public  $error;
     /** @var int error code */
     public  $errno;
-    /** @var bool use workaround for open_basedir restrictions, to be changed from unit tests only! */
+    /** @var bool Perform redirects at PHP level instead of relying on native cURL functionality. Always true now. */
     public $emulateredirects = null;
 
     /** @var array cURL options */
@@ -3176,9 +3194,13 @@ class curl {
             $this->proxy = false;
         }
 
-        if (!isset($this->emulateredirects)) {
-            $this->emulateredirects = ini_get('open_basedir');
-        }
+        // All redirects are performed at PHP level now and each one is checked against blocked URLs rules. We do not
+        // want to let cURL naively follow the redirect chain and visit every URL for security reasons. Even when the
+        // caller explicitly wants to ignore the security checks, we would need to fall back to the original
+        // implementation and use emulated redirects if open_basedir is in effect to avoid the PHP warning
+        // "CURLOPT_FOLLOWLOCATION cannot be activated when in safe_mode or an open_basedir". So it is better to simply
+        // ignore this property and always handle redirects at this PHP wrapper level and not inside the native cURL.
+        $this->emulateredirects = true;
 
         // Curl security setup. Allow injection of a security helper, but if not found, default to the core helper.
         if (isset($settings['securityhelper']) && $settings['securityhelper'] instanceof \core\files\curl_security_helper_base) {
@@ -3487,8 +3509,8 @@ class curl {
 
         // Set options.
         foreach($this->options as $name => $val) {
-            if ($name === 'CURLOPT_FOLLOWLOCATION' and $this->emulateredirects) {
-                // The redirects are emulated elsewhere.
+            if ($name === 'CURLOPT_FOLLOWLOCATION') {
+                // All the redirects are emulated at PHP level.
                 curl_setopt($curl, CURLOPT_FOLLOWLOCATION, 0);
                 continue;
             }
@@ -3643,6 +3665,51 @@ class curl {
     }
 
     /**
+     * check_securityhelper_blocklist.
+     * Checks whether the given URL is blocked by checking both plugin's security helpers
+     * and core curl security helper or any curl security helper that passed to curl class constructor.
+     * If ignoresecurity is set to true, skip checking and consider the url is not blocked.
+     * This augments all installed plugin's security helpers if there is any.
+     *
+     * @param string $url the url to check.
+     * @return string - an error message if URL is blocked or null if URL is not blocked.
+     */
+    protected function check_securityhelper_blocklist(string $url): ?string {
+
+        // If curl security is not enabled, do not proceed.
+        if ($this->ignoresecurity) {
+            return null;
+        }
+
+        // Augment all installed plugin's security helpers if there is any.
+        // The plugin's function has to be defined as plugintype_pluginname_curl_security_helper in pluginname/lib.php.
+        $plugintypes = get_plugins_with_function('curl_security_helper');
+
+        // If any of the security helper's function returns true, treat as URL is blocked.
+        foreach ($plugintypes as $plugins) {
+            foreach ($plugins as $pluginfunction) {
+                // Get curl security helper object from plugin lib.php.
+                $pluginsecurityhelper = $pluginfunction();
+                if ($pluginsecurityhelper instanceof \core\files\curl_security_helper_base) {
+                    if ($pluginsecurityhelper->url_is_blocked($url)) {
+                        $this->error = $pluginsecurityhelper->get_blocked_url_string();
+                        return $this->error;
+                    }
+                }
+            }
+        }
+
+        // Check if the URL is blocked in core curl_security_helper or
+        // curl security helper that passed to curl class constructor.
+        if ($this->securityhelper->url_is_blocked($url)) {
+            $this->error = $this->securityhelper->get_blocked_url_string();
+            return $this->error;
+        }
+
+        return null;
+    }
+
+    /**
      * Single HTTP Request
      *
      * @param string $url The URL to request
@@ -3654,17 +3721,21 @@ class curl {
         $this->reset_request_state_vars();
 
         if ((defined('PHPUNIT_TEST') && PHPUNIT_TEST)) {
-            if ($mockresponse = array_pop(self::$mockresponses)) {
+            $mockresponse = array_pop(self::$mockresponses);
+            if ($mockresponse !== null) {
                 $this->info = [ 'http_code' => 200 ];
                 return $mockresponse;
             }
         }
 
-        // If curl security is enabled, check the URL against the list of blocked URLs before calling curl_exec.
-        // Note: This will only check the base url. In the case of redirects, the blocking check is also after the curl_exec.
-        if (!$this->ignoresecurity && $this->securityhelper->url_is_blocked($url)) {
-            $this->error = $this->securityhelper->get_blocked_url_string();
-            return $this->error;
+        if (empty($this->emulateredirects)) {
+            // Just in case someone had tried to explicitly disable emulated redirects in legacy code.
+            debugging('Attempting to disable emulated redirects has no effect any more!', DEBUG_DEVELOPER);
+        }
+
+        $urlisblocked = $this->check_securityhelper_blocklist($url);
+        if (!is_null($urlisblocked)) {
+            return $urlisblocked;
         }
 
         // Set the URL as a curl option.
@@ -3684,16 +3755,14 @@ class curl {
         $this->errno = curl_errno($curl);
         // Note: $this->response and $this->rawresponse are filled by $hits->formatHeader callback.
 
-        // In the case of redirects (which curl blindly follows), check the post-redirect URL against the list of blocked list too.
-        if (intval($this->info['redirect_count']) > 0 && !$this->ignoresecurity
-            && $this->securityhelper->url_is_blocked($this->info['url'])) {
-            $this->reset_request_state_vars();
-            $this->error = $this->securityhelper->get_blocked_url_string();
-            curl_close($curl);
-            return $this->error;
+        if (intval($this->info['redirect_count']) > 0) {
+            // For security reasons we do not allow the cURL handle to follow redirects on its own.
+            // See setting CURLOPT_FOLLOWLOCATION in {@see self::apply_opt()} method.
+            throw new coding_exception('Internal cURL handle should never follow redirects on its own!',
+                'Reported number of redirects: ' . $this->info['redirect_count']);
         }
 
-        if ($this->emulateredirects and $this->options['CURLOPT_FOLLOWLOCATION'] and $this->info['http_code'] != 200) {
+        if ($this->options['CURLOPT_FOLLOWLOCATION'] && $this->info['http_code'] != 200) {
             $redirects = 0;
 
             while($redirects <= $this->options['CURLOPT_MAXREDIRS']) {
@@ -3727,6 +3796,12 @@ class curl {
                 if (isset($this->info['redirect_url'])) {
                     if (preg_match('|^https?://|i', $this->info['redirect_url'])) {
                         $redirecturl = $this->info['redirect_url'];
+                    } else {
+                        // Emulate CURLOPT_REDIR_PROTOCOLS behaviour which we have set to (CURLPROTO_HTTP | CURLPROTO_HTTPS) only.
+                        $this->errno = CURLE_UNSUPPORTED_PROTOCOL;
+                        $this->error = 'Redirect to a URL with unsuported protocol: ' . $this->info['redirect_url'];
+                        curl_close($curl);
+                        return $this->error;
                     }
                 }
                 if (!$redirecturl) {
@@ -3753,6 +3828,23 @@ class curl {
                             // Relative to current script.
                             $redirecturl = dirname($current).'/'.$redirecturl;
                         }
+                    }
+                }
+
+                $urlisblocked = $this->check_securityhelper_blocklist($redirecturl);
+                if (!is_null($urlisblocked)) {
+                    $this->reset_request_state_vars();
+                    curl_close($curl);
+                    return $urlisblocked;
+                }
+
+                // If the response body is written to a seekable stream resource, reset the stream pointer to avoid
+                // appending multiple response bodies to the same resource.
+                if (!empty($this->options['CURLOPT_FILE'])) {
+                    $streammetadata = stream_get_meta_data($this->options['CURLOPT_FILE']);
+                    if ($streammetadata['seekable']) {
+                        ftruncate($this->options['CURLOPT_FILE'], 0);
+                        rewind($this->options['CURLOPT_FILE']);
                     }
                 }
 

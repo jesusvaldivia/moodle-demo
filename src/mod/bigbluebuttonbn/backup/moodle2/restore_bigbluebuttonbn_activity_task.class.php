@@ -62,9 +62,10 @@ class restore_bigbluebuttonbn_activity_task extends restore_activity_task
      * @return array
      */
     public static function define_decode_contents() {
-        $contents = array();
-        $contents[] = new restore_decode_content('bigbluebuttonbn', array('intro'), 'bigbluebuttonbn');
-        $contents[] = new restore_decode_content('bigbluebuttonbn_logs', array('log'), 'bigbluebuttonbn_logs');
+        $contents = [];
+        $contents[] = new restore_decode_content('bigbluebuttonbn', ['intro'], 'bigbluebuttonbn');
+        $contents[] = new restore_decode_content('bigbluebuttonbn_logs', ['log'], 'bigbluebuttonbn_logs');
+        $contents[] = new restore_decode_content('bigbluebuttonbn_recordings', ['importeddata'], 'bigbluebuttonbn_recordings');
         return $contents;
     }
 
@@ -74,7 +75,7 @@ class restore_bigbluebuttonbn_activity_task extends restore_activity_task
      * @return array
      */
     public static function define_decode_rules() {
-        $rules = array();
+        $rules = [];
         $rules[] = new restore_decode_rule('BIGBLUEBUTTONBNVIEWBYID', '/mod/bigbluebuttonbn/view.php?id=$1', 'course_module');
         $rules[] = new restore_decode_rule('BIGBLUEBUTTONBNINDEX', '/mod/bigbluebuttonbn/index.php?id=$1', 'course');
         return $rules;
@@ -86,7 +87,7 @@ class restore_bigbluebuttonbn_activity_task extends restore_activity_task
      * @return array
      */
     public static function define_restore_log_rules() {
-        $rules = array();
+        $rules = [];
         $rules[] = new restore_log_rule('bigbluebuttonbn', 'add', 'view.php?id={course_module}', '{bigbluebuttonbn}');
         $rules[] = new restore_log_rule('bigbluebuttonbn', 'update', 'view.php?id={course_module}', '{bigbluebuttonbn}');
         $rules[] = new restore_log_rule('bigbluebuttonbn', 'view', 'view.php?id={course_module}', '{bigbluebuttonbn}');
@@ -100,7 +101,7 @@ class restore_bigbluebuttonbn_activity_task extends restore_activity_task
      * @return array
      */
     public static function define_restore_log_rules_for_course() {
-        $rules = array();
+        $rules = [];
         $rules[] = new restore_log_rule('bigbluebuttonbn', 'view all', 'index.php?id={course}', null);
         return $rules;
     }

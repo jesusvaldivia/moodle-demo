@@ -678,6 +678,18 @@ class theme_config {
     public $precompiledcsscallback = null;
 
     /**
+     * Whether the theme uses course index.
+     * @var bool
+     */
+    public $usescourseindex = false;
+
+    /**
+     * Configuration for the page activity header
+     * @var array
+     */
+    public $activityheaderconfig = [];
+
+    /**
      * Load the config.php file for a particular theme, and return an instance
      * of this class. (That is, this is a factory method.)
      *
@@ -747,14 +759,16 @@ class theme_config {
             $baseconfig = $config;
         }
 
-        $configurable = array(
+        $configurable = [
             'parents', 'sheets', 'parents_exclude_sheets', 'plugins_exclude_sheets', 'usefallback',
             'javascripts', 'javascripts_footer', 'parents_exclude_javascripts',
             'layouts', 'enablecourseajax', 'requiredblocks',
             'rendererfactory', 'csspostprocess', 'editor_sheets', 'editor_scss', 'rarrow', 'larrow', 'uarrow', 'darrow',
             'hidefromselector', 'doctype', 'yuicssmodules', 'blockrtlmanipulations', 'blockrendermethod',
             'scss', 'extrascsscallback', 'prescsscallback', 'csstreepostprocessor', 'addblockposition',
-            'iconsystem', 'precompiledcsscallback');
+            'iconsystem', 'precompiledcsscallback', 'haseditswitch', 'usescourseindex', 'activityheaderconfig',
+            'removedprimarynavitems',
+        ];
 
         foreach ($config as $key=>$value) {
             if (in_array($key, $configurable)) {
@@ -2089,24 +2103,45 @@ class theme_config {
 
         } else {
             if (strpos($component, '_') === false) {
-                $component = 'mod_'.$component;
+                $component = "mod_{$component}";
             }
             list($type, $plugin) = explode('_', $component, 2);
 
-            if ($imagefile = $this->image_exists("$this->dir/pix_plugins/$type/$plugin/$image", $svg)) {
-                return $imagefile;
-            }
-            foreach (array_reverse($this->parent_configs) as $parent_config) { // base first, the immediate parent last
-                if ($imagefile = $this->image_exists("$parent_config->dir/pix_plugins/$type/$plugin/$image", $svg)) {
-                    return $imagefile;
+            // In Moodle 4.0 we introduced a new image format.
+            // Support that image format here.
+            $candidates = [$image];
+
+            if ($type === 'mod') {
+                if ($image === 'icon' || $image === 'monologo') {
+                    $candidates = ['monologo', 'icon'];
+                    if ($image === 'icon') {
+                        debugging(
+                            "The 'icon' image for activity modules has been replaced with a new 'monologo'. " .
+                                "Please update your calling code to fetch the new icon where possible. " .
+                                "Called for component {$component}.",
+                            DEBUG_DEVELOPER
+                        );
+                    }
                 }
             }
-            if ($imagefile = $this->image_exists("$CFG->dataroot/pix_plugins/$type/$plugin/$image", $svg)) {
-                return $imagefile;
-            }
-            $dir = core_component::get_plugin_directory($type, $plugin);
-            if ($imagefile = $this->image_exists("$dir/pix/$image", $svg)) {
-                return $imagefile;
+            foreach ($candidates as $image) {
+                if ($imagefile = $this->image_exists("$this->dir/pix_plugins/$type/$plugin/$image", $svg)) {
+                    return $imagefile;
+                }
+
+                // Base first, the immediate parent last.
+                foreach (array_reverse($this->parent_configs) as $parentconfig) {
+                    if ($imagefile = $this->image_exists("$parentconfig->dir/pix_plugins/$type/$plugin/$image", $svg)) {
+                        return $imagefile;
+                    }
+                }
+                if ($imagefile = $this->image_exists("$CFG->dataroot/pix_plugins/$type/$plugin/$image", $svg)) {
+                    return $imagefile;
+                }
+                $dir = core_component::get_plugin_directory($type, $plugin);
+                if ($imagefile = $this->image_exists("$dir/pix/$image", $svg)) {
+                    return $imagefile;
+                }
             }
             return null;
         }
@@ -2451,22 +2486,22 @@ class theme_config {
      * @return string
      */
     protected function get_region_name($region, $theme) {
-        $regionstring = get_string('region-' . $region, 'theme_' . $theme);
-        // A name exists in this theme, so use it
-        if (substr($regionstring, 0, 1) != '[') {
-            return $regionstring;
+
+        $stringman = get_string_manager();
+
+        // Check if the name is defined in the theme.
+        if ($stringman->string_exists('region-' . $region, 'theme_' . $theme)) {
+            return get_string('region-' . $region, 'theme_' . $theme);
         }
 
-        // Otherwise, try to find one elsewhere
-        // Check parents, if any
+        // Check the theme parents.
         foreach ($this->parents as $parentthemename) {
-            $regionstring = get_string('region-' . $region, 'theme_' . $parentthemename);
-            if (substr($regionstring, 0, 1) != '[') {
-                return $regionstring;
+            if ($stringman->string_exists('region-' . $region, 'theme_' . $parentthemename)) {
+                return get_string('region-' . $region, 'theme_' . $parentthemename);
             }
         }
 
-        // Last resort, try the boost theme for names
+        // Last resort, try the boost theme for names.
         return get_string('region-' . $region, 'theme_boost');
     }
 

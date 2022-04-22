@@ -25,6 +25,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2020110900;
-$plugin->requires  = 2020110300;
+$plugin->version   = 2022041900;
+$plugin->requires  = 2022041200;
 $plugin->component = 'gradereport_history';

@@ -313,7 +313,7 @@ class mysqli_native_moodle_database extends moodle_database {
         // - innodb_file_format_max
         // - innodb_large_prefix
         // 1. MySQL: deprecated in 5.7.7 and removed 8.0.0+.
-        $ismysqlge8d0d0 = ($this->get_dbtype() == 'mysqli') &&
+        $ismysqlge8d0d0 = ($this->get_dbtype() == 'mysqli' || $this->get_dbtype() == 'auroramysql') &&
                 version_compare($this->get_server_info()['version'], '8.0.0', '>=');
         // 2. MariaDB: deprecated in 10.2.0 and removed 10.3.1+.
         $ismariadbge10d3d1 = ($this->get_dbtype() == 'mariadb') &&
@@ -1821,6 +1821,19 @@ class mysqli_native_moodle_database extends moodle_database {
             return "''";
         }
         return "CONCAT_WS($separator, $s)";
+    }
+
+    /**
+     * Return SQL for performing group concatenation on given field/expression
+     *
+     * @param string $field
+     * @param string $separator
+     * @param string $sort
+     * @return string
+     */
+    public function sql_group_concat(string $field, string $separator = ', ', string $sort = ''): string {
+        $fieldsort = $sort ? "ORDER BY {$sort}" : '';
+        return "GROUP_CONCAT({$field} {$fieldsort} SEPARATOR '{$separator}')";
     }
 
     /**

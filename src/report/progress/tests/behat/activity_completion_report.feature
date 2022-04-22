@@ -31,20 +31,18 @@ Feature: Teacher can view and override users' activity completion data via the p
   @javascript
   Scenario: Given the status has been overridden, when a student tries to complete it again, completion can still occur.
     # Student completes the activities, manual and automatic completion.
-    Given I log in as "student1"
-    And I am on "Course 1" course homepage
-    And "Not completed: my assignment. Select to mark as complete." "icon" should exist in the "my assignment" "list_item"
-    And "Not completed: my assignment 2" "icon" should exist in the "my assignment 2" "list_item"
-    And I click on "Not completed: my assignment. Select to mark as complete." "icon"
-    And "Completed: my assignment. Select to mark as not complete." "icon" should exist in the "my assignment" "list_item"
-    And I click on "my assignment 2" "link"
-    And I am on "Course 1" course homepage
-    And "Completed: my assignment 2" "icon" should exist in the "my assignment 2" "list_item"
+    Given I am on the "Course 1" course page logged in as student1
+    And the manual completion button of "my assignment" is displayed as "Mark as done"
+    And I toggle the manual completion state of "my assignment"
+    And the manual completion button of "my assignment" is displayed as "Done"
+    And I am on the "my assignment 2" "assign activity" page
+    And the "View" completion condition of "my assignment 2" is displayed as "done"
     And I log out
+
     # Teacher overrides the activity completion statuses to incomplete.
-    When I log in as "teacher1"
-    And I am on "Course 1" course homepage
-    And I navigate to "Reports > Activity completion" in current page administration
+    When I am on the "Course 1" course page logged in as teacher1
+    And I navigate to "Reports" in current page administration
+    And I click on "Activity completion" "link"
     And "Ann, Jill, Grainne, Beauchamp, my assignment: Completed" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And "Ann, Jill, Grainne, Beauchamp, my assignment 2: Completed" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And I click on "my assignment" "link" in the "Ann, Jill, Grainne, Beauchamp" "table_row"
@@ -54,21 +52,23 @@ Feature: Teacher can view and override users' activity completion data via the p
     And I click on "Save changes" "button"
     And "Ann, Jill, Grainne, Beauchamp, my assignment 2: Not completed (set by Teacher)" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And I log out
+
     # Student can now complete the activities again, via normal means.
-    Then I log in as "student1"
+    And I am on the "Course 1" course page logged in as student1
+    Then the manual completion button of "my assignment" overridden by "Teacher" is displayed as "Mark as done"
+    And the "View" completion condition of "my assignment 2" overridden by "Teacher" is displayed as "todo"
+    And I toggle the manual completion state of "my assignment"
+    And the manual completion button of "my assignment" is displayed as "Done"
+    And I am on the "my assignment 2" "assign activity" page
+
     And I am on "Course 1" course homepage
-    And "Not completed: my assignment (set by Teacher). Select to mark as complete." "icon" should exist in the "my assignment" "list_item"
-    And "Not completed: my assignment 2 (set by Teacher)" "icon" should exist in the "my assignment 2" "list_item"
-    And I click on "Not completed: my assignment (set by Teacher). Select to mark as complete." "icon"
-    And "Completed: my assignment. Select to mark as not complete." "icon" should exist in the "my assignment" "list_item"
-    And I click on "my assignment 2" "link"
-    And I am on "Course 1" course homepage
-    And "Completed: my assignment 2" "icon" should exist in the "my assignment 2" "list_item"
+    And the "View" completion condition of "my assignment 2" is displayed as "done"
     And I log out
+
     # And the activity completion report should show the same.
-    When I log in as "teacher1"
-    And I am on "Course 1" course homepage
-    And I navigate to "Reports > Activity completion" in current page administration
+    And I am on the "Course 1" Course page logged in as teacher1
+    And I navigate to "Reports" in current page administration
+    And I click on "Activity completion" "link"
     And "Ann, Jill, Grainne, Beauchamp, my assignment: Completed" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And "Ann, Jill, Grainne, Beauchamp, my assignment 2: Completed" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
 
@@ -78,9 +78,9 @@ Feature: Teacher can view and override users' activity completion data via the p
   @javascript
   Scenario: Given the status has been overridden to complete, when a student triggers completion updates, the status remains fixed.
     # When the teacher overrides the activity completion statuses to complete.
-    When I log in as "teacher1"
-    And I am on "Course 1" course homepage
-    And I navigate to "Reports > Activity completion" in current page administration
+    When I am on the "Course 1" Course page logged in as teacher1
+    And I navigate to "Reports" in current page administration
+    And I click on "Activity completion" "link"
     And "Ann, Jill, Grainne, Beauchamp, my assignment: Not completed" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And "Ann, Jill, Grainne, Beauchamp, my assignment 3: Not completed" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And I click on "my assignment" "link" in the "Ann, Jill, Grainne, Beauchamp" "table_row"
@@ -90,21 +90,21 @@ Feature: Teacher can view and override users' activity completion data via the p
     And I click on "Save changes" "button"
     And "Ann, Jill, Grainne, Beauchamp, my assignment 3: Completed (set by Teacher)" "icon" should exist in the "Ann, Jill, Grainne, Beauchamp" "table_row"
     And I log out
+
     # Then as a student, confirm that automatic completion checks are no longer triggered (such as after an assign submission).
-    Then I log in as "student1"
-    And I am on "Course 1" course homepage
-    And "Completed: my assignment 3 (set by Teacher)" "icon" should exist in the "my assignment 3" "list_item"
-    And I click on "my assignment 3" "link"
+    And I am on the "Course 1" course page logged in as student1
+    Then the "Receive a grade" completion condition of "my assignment 3" overridden by "Teacher" is displayed as "done"
+
+    And I am on the "my assignment 3" "assign activity" page
     And I press "Add submission"
     And I set the following fields to these values:
       | Online text | I'm the student first submission |
     And I press "Save changes"
     And I should see "Submitted for grading"
     And I am on "Course 1" course homepage
-    And "Completed: my assignment 3 (set by Teacher)" "icon" should exist in the "my assignment 3" "list_item"
+    And the "Receive a grade" completion condition of "my assignment 3" overridden by "Teacher" is displayed as "done"
     # And Confirm that manual completion changes are still allowed.
     And I am on "Course 1" course homepage
-    And "Completed: my assignment (set by Teacher). Select to mark as not complete." "icon" should exist in the "my assignment" "list_item"
-    And I click on "Completed: my assignment (set by Teacher). Select to mark as not complete." "icon"
-    And "Not completed: my assignment. Select to mark as complete." "icon" should exist in the "my assignment" "list_item"
-    And I log out
+    And the manual completion button of "my assignment" overridden by "Teacher" is displayed as "Done"
+    And I toggle the manual completion state of "my assignment"
+    And the manual completion button of "my assignment" is displayed as "Mark as done"

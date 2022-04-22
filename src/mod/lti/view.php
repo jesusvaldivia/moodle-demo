@@ -106,17 +106,17 @@ $pagetitle = strip_tags($course->shortname.': '.format_string($lti->name));
 $PAGE->set_title($pagetitle);
 $PAGE->set_heading($course->fullname);
 
+$activityheader = $PAGE->activityheader;
+if (!$lti->showtitlelaunch) {
+    $header['title'] = '';
+}
+if (!$lti->showdescriptionlaunch) {
+    $header['description'] = '';
+}
+$activityheader->set_attrs($header ?? []);
+
 // Print the page header.
 echo $OUTPUT->header();
-
-if ($lti->showtitlelaunch) {
-    // Print the main part of the page.
-    echo $OUTPUT->heading(format_string($lti->name, true, array('context' => $context)));
-}
-
-if ($lti->showdescriptionlaunch && $lti->intro) {
-    echo $OUTPUT->box(format_module_intro('lti', $lti, $cm->id), 'generalbox description', 'intro');
-}
 
 if ($typeid) {
     $config = lti_get_type_type_config($typeid);
@@ -205,18 +205,3 @@ if (($launchcontainer == LTI_LAUNCH_CONTAINER_WINDOW) &&
 
 // Finish the page.
 echo $OUTPUT->footer();
-
-if ($_SESSION['SPS']=="IEDUCA") 
-{ 
-$_SESSION['SPS']="IEDUCASSO"; 
-//$info_data = $DB->get_record('user_info_data', ['userid' => $USER->id , 'fieldid' =>'1'] ); 
-//if (empty($info_data))
-//{ 
-$correo = $USER->email;
-//}
-//else 
-//{ 
-//	$correo = $info_data->data;
-//}
-echo "<iframe width=\"0\" height=\"0\" tabindex=\"-1\" style=\"display:none\" src=\"https://auth.ieduca.pe/saml/register?email=".$correo."&application=ucal-edu-pe&tokenlogin=0a0b0c0d0e0f\"></iframe>";
-}

@@ -14,61 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-/**
- * Privacy class for requesting user data.
- *
- * @package   mod_bigbluebuttonbn
- * @copyright 2018 - present, Blindside Networks Inc
- * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @author    Jesus Federico  (jesus [at] blindsidenetworks [dt] com)
- */
-
 namespace mod_bigbluebuttonbn\privacy;
 
-use \core_privacy\local\metadata\collection;
-use \core_privacy\local\request\approved_contextlist;
-use \core_privacy\local\request\approved_userlist;
-use \core_privacy\local\request\contextlist;
-use \core_privacy\local\request\helper;
-use \core_privacy\local\request\transform;
-use \core_privacy\local\request\userlist;
-use \core_privacy\local\request\writer;
-
-defined('MOODLE_INTERNAL') || die();
-
-global $CFG;
-require_once($CFG->dirroot . '/mod/bigbluebuttonbn/locallib.php');
-
-/*
- * This part is to be eliminated as soon as possible but allows the phpunit test to pass Ok on MOODLE_33 and below WHILST allowing
- * also the privacy/tests/provider_test.php tests to pass
- * (vendor/bin/phpunit --fail-on-risky --disallow-test-output -v privacy/tests/provider_test.php).
- * Downside we add a new warning to the code checker. This is not ideal but will be ok until we stop supporting MOODLE_33 or we
- * change the test in provider_test.php so to cater for classes which are implementing the right method but not necessarily
- * inheriting from the new interface setup in MOODLE_34 (\core_privacy\local\request\core_userlist_provider).
- * This is linked to CONTRIB-7983
- */
-if (!interface_exists("\\core_privacy\\local\\request\\core_userlist_provider")) {
-    interface core_userlist_provider {
-        /**
-         * Get the list of users who have data within a context.
-         *
-         * @param   userlist $userlist The userlist containing the list of users who have data in this context/plugin combination.
-         */
-        public static function get_users_in_context(userlist $userlist);
-
-        /**
-         * Delete multiple users within a single context.
-         *
-         * @param   approved_userlist       $userlist The approved context and user information to delete information for.
-         */
-        public static function delete_data_for_users(approved_userlist $userlist);
-    }
-} else {
-    interface core_userlist_provider extends \core_privacy\local\request\core_userlist_provider {
-
-    }
-}
+use core_privacy\local\metadata\collection;
+use core_privacy\local\request\approved_contextlist;
+use core_privacy\local\request\approved_userlist;
+use core_privacy\local\request\contextlist;
+use core_privacy\local\request\helper;
+use core_privacy\local\request\transform;
+use core_privacy\local\request\userlist;
+use core_privacy\local\request\writer;
 
 /**
  * Privacy class for requesting user data.
@@ -86,10 +41,7 @@ class provider implements
     \core_privacy\local\request\plugin\provider,
 
     // This plugin is capable of determining which users have data within it.
-    core_userlist_provider {
-
-    // This trait must be included.
-    use \core_privacy\local\legacy_polyfill;
+    \core_privacy\local\request\core_userlist_provider {
 
     /**
      * Returns metadata.
@@ -97,7 +49,7 @@ class provider implements
      * @param collection $collection The initialised collection to add items to.
      * @return collection A listing of user data stored through this system.
      */
-    public static function _get_metadata(collection $collection) {
+    public static function get_metadata(collection $collection): collection {
 
          // The table bigbluebuttonbn stores only the room properties.
          // However, there is a chance that some personal information is stored as metadata.
@@ -118,6 +70,10 @@ class provider implements
             'meta' => 'privacy:metadata:bigbluebuttonbn_logs:meta',
         ], 'privacy:metadata:bigbluebuttonbn_logs');
 
+        $collection->add_database_table('bigbluebuttonbn_recordings', [
+            'userid' => 'privacy:metadata:bigbluebuttonbn_logs:userid',
+        ], 'privacy:metadata:bigbluebuttonbn_recordings');
+
         // Personal information has to be passed to BigBlueButton.
         // This includes the user ID and fullname.
         $collection->add_external_location_link('bigbluebutton', [
@@ -134,10 +90,10 @@ class provider implements
      * @param   int           $userid       The user to search.
      * @return  contextlist   $contextlist  The list of contexts used in this plugin.
      */
-    public static function _get_contexts_for_userid(int $userid) {
+    public static function get_contexts_for_userid(int $userid): contextlist {
         // If user was already deleted, do nothing.
         if (!\core_user::get_user($userid)) {
-            return;
+            return new contextlist();
         }
         // Fetch all bigbluebuttonbn logs.
         $sql = "SELECT c.id
@@ -169,53 +125,7 @@ class provider implements
      *
      * @param approved_contextlist $contextlist a list of contexts approved for export.
      */
-    public static function _export_user_data(approved_contextlist $contextlist) {
-        self::_export_user_data_bigbliebuttonbn_logs($contextlist);
-    }
-
-    /**
-     * Delete all data for all users in the specified context.
-     *
-     * @param \context $context the context to delete in.
-     */
-    public static function _delete_data_for_all_users_in_context(\context $context) {
-        global $DB;
-
-        if (!$context instanceof \context_module) {
-            return;
-        }
-
-        $instanceid = $DB->get_field('course_modules', 'instance', ['id' => $context->instanceid], MUST_EXIST);
-        $DB->delete_records('bigbluebuttonbn_logs', ['bigbluebuttonbnid' => $instanceid]);
-    }
-
-    /**
-     * Delete all user data for the specified user, in the specified contexts.
-     *
-     * @param approved_contextlist $contextlist a list of contexts approved for deletion.
-     */
-    public static function _delete_data_for_user(approved_contextlist $contextlist) {
-        global $DB;
-        $count = $contextlist->count();
-        if (empty($count)) {
-            return;
-        }
-        $userid = $contextlist->get_user()->id;
-        foreach ($contextlist->get_contexts() as $context) {
-            if (!$context instanceof \context_module) {
-                return;
-            }
-            $instanceid = $DB->get_field('course_modules', 'instance', ['id' => $context->instanceid], MUST_EXIST);
-            $DB->delete_records('bigbluebuttonbn_logs', ['bigbluebuttonbnid' => $instanceid, 'userid' => $userid]);
-        }
-    }
-
-    /**
-     * Export personal data for the given approved_contextlist related to bigbluebuttonbn logs.
-     *
-     * @param approved_contextlist $contextlist a list of contexts approved for export.
-     */
-    protected static function _export_user_data_bigbliebuttonbn_logs(approved_contextlist $contextlist) {
+    public static function export_user_data(approved_contextlist $contextlist) {
         global $DB;
 
         // Filter out any contexts that are not related to modules.
@@ -239,7 +149,11 @@ class provider implements
         list($insql, $inparams) = $DB->get_in_or_equal($instanceids, SQL_PARAMS_NAMED);
         $params = array_merge($inparams, ['userid' => $user->id]);
         $recordset = $DB->get_recordset_select(
-            'bigbluebuttonbn_logs', "bigbluebuttonbnid $insql AND userid = :userid", $params, 'timecreated, id');
+            'bigbluebuttonbn_logs',
+            "bigbluebuttonbnid $insql AND userid = :userid",
+            $params,
+            'timecreated, id'
+        );
         self::recordset_loop_and_export($recordset, 'bigbluebuttonbnid', [],
             function($carry, $record) use ($user, $instanceidstocmids) {
                 $carry[] = [
@@ -258,6 +172,43 @@ class provider implements
                 writer::with_context($context)->export_data([], $finaldata);
             }
         );
+    }
+
+    /**
+     * Delete all data for all users in the specified context.
+     *
+     * @param \context $context the context to delete in.
+     */
+    public static function delete_data_for_all_users_in_context(\context $context) {
+        global $DB;
+
+        if (!$context instanceof \context_module) {
+            return;
+        }
+
+        $instanceid = $DB->get_field('course_modules', 'instance', ['id' => $context->instanceid], MUST_EXIST);
+        $DB->delete_records('bigbluebuttonbn_logs', ['bigbluebuttonbnid' => $instanceid]);
+    }
+
+    /**
+     * Delete all user data for the specified user, in the specified contexts.
+     *
+     * @param approved_contextlist $contextlist a list of contexts approved for deletion.
+     */
+    public static function delete_data_for_user(approved_contextlist $contextlist) {
+        global $DB;
+        $count = $contextlist->count();
+        if (empty($count)) {
+            return;
+        }
+        $userid = $contextlist->get_user()->id;
+        foreach ($contextlist->get_contexts() as $context) {
+            if (!$context instanceof \context_module) {
+                return;
+            }
+            $instanceid = $DB->get_field('course_modules', 'instance', ['id' => $context->instanceid], MUST_EXIST);
+            $DB->delete_records('bigbluebuttonbn_logs', ['bigbluebuttonbnid' => $instanceid, 'userid' => $userid]);
+        }
     }
 
     /**
@@ -293,8 +244,13 @@ class provider implements
      * @param callable $export The function to export the dataset, receives the last value from $splitkey and the dataset.
      * @return void
      */
-    protected static function recordset_loop_and_export(\moodle_recordset $recordset, $splitkey, $initial,
-                                                        callable $reducer, callable $export) {
+    protected static function recordset_loop_and_export(
+        \moodle_recordset $recordset,
+        $splitkey,
+        $initial,
+        callable $reducer,
+        callable $export
+    ) {
         $data = $initial;
         $lastid = null;
 
@@ -319,7 +275,6 @@ class provider implements
      * @param userlist $userlist The userlist containing the list of users who have data in this context/plugin combination.
      */
     public static function get_users_in_context(\core_privacy\local\request\userlist $userlist) {
-
         $context = $userlist->get_context();
 
         if (!$context instanceof \context_module) {
@@ -327,8 +282,8 @@ class provider implements
         }
 
         $params = [
-            'instanceid'    => $context->instanceid,
-            'modulename'    => 'bigbluebuttonbn',
+            'instanceid' => $context->instanceid,
+            'modulename' => 'bigbluebuttonbn',
         ];
 
         $sql = "SELECT bnl.userid
